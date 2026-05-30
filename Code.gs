@@ -16,6 +16,7 @@ const CONFIG = {
   hojaMaestra:     "📋 Todas las Reservas",
   hojaAseos:       "🧹 Todos los Aseos",
   hojaPropiedades: "⚙️ Propiedades",
+  hojaPersonal:     "👩 Personal",
   meses: ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
           "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
 };
@@ -184,6 +185,33 @@ function onOpen() {
     .addToUi();
 }
 
+
+// ============================================================
+// LEER HOJA PERSONAL
+// ============================================================
+
+function getPersonal() {
+  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+  if (!hoja || hoja.getLastRow() < 2) return [];
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  const result = [];
+  for (const r of datos) {
+    const activa = r[0] === true || r[0] === "TRUE" || r[0] === "true";
+    const nombre = String(r[1] || "").trim();
+    if (!activa || !nombre) continue;
+    result.push({
+      nombre,
+      pin:        String(r[2] || "").trim(),
+      email:      String(r[3] || "").trim(),
+      formulario: String(r[4] || "").trim(),
+      calendario: String(r[5] || "").trim(),
+      telefono:   String(r[6] || "").trim(),
+    });
+  }
+  return result;
+}
+
 // ============================================================
 // WEB APP
 // ============================================================
@@ -198,14 +226,20 @@ function loginAseadora(nombre, pin) {
   if (!nombre || !pin) return false;
   nombre = String(nombre).trim().toLowerCase();
   pin    = String(pin).trim();
-  const usuario = Object.keys(CONFIG.pines).find(n => n.toLowerCase() === nombre);
+  const personal = getPersonal();
+  const usuario  = personal.find(p => p.nombre.toLowerCase() === nombre);
   if (!usuario) return false;
-  return CONFIG.pines[usuario] === pin;
+  return usuario.pin === pin;
 }
 
 // ============================================================
 // DATOS PARA LA APP (lee de "🧹 Todos los Aseos")
 // ============================================================
+
+
+function getPersonalParaApp() {
+  return getPersonal().map(p => ({ nombre: p.nombre, formulario: p.formulario }));
+}
 
 function getDatosAseadora(nombre) {
   const ss   = SpreadsheetApp.getActiveSpreadsheet();
@@ -352,10 +386,24 @@ function autoCompletarAseosPasados() {
     const checkout    = fechaADate(checkoutStr);
     if (!checkout || checkout >= hoy) continue;
 
-    const fila = i + 2;
+    const fila   = i + 2;
+    const codigo = String(datos[i][0]);
     hoja.getRange(fila, 8).setValue("Completado");
     hoja.getRange(fila, 13).setValue(ahora + " (auto)");
     hoja.getRange(fila, 1, 1, 13).setBackground("#e8f5e9");
+
+    // Sync al master sheet
+    const master = ss.getSheetByName(CONFIG.hojaMaestra);
+    if (master && master.getLastRow() >= 2) {
+      const mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+      for (let j = 0; j < mc.length; j++) {
+        if (String(mc[j][0]) === codigo) {
+          master.getRange(j+2, 7).setValue("Finalizado");
+          master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
+          break;
+        }
+      }
+    }
     count++;
   }
 
@@ -885,7 +933,6 @@ function agregarAseoManual() {
     'aseadora:document.getElementById("aseadora").value,notas:document.getElementById("notas").value});' +
     '}<\/script></body></html>';
 
-  HtmlService.createHtmlOutput(html).setWidth(420).setHeight(510);
   SpreadsheetApp.getUi().showModalDialog(
     HtmlService.createHtmlOutput(html).setWidth(420).setHeight(510),
     '➕ Agregar Aseo Manual'
@@ -945,4 +992,55 @@ function crearTriggersAutomaticos() {
   // (verificar en Apps Script → Configuración del proyecto)
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
   SpreadsheetApp.getActiveSpreadsheet().toast("✅ Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
+}
+
+
+// ============================================================
+// HOJA PERSONAL — crear/verificar (ejecutar UNA vez)
+// ============================================================
+
+function crearHojaPersonal() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const NOMBRE_HOJA = "👩 Personal";
+
+  // Si ya existe, no recrear
+  let hoja = ss.getSheetByName(NOMBRE_HOJA);
+  if (hoja) {
+    SpreadsheetApp.getActiveSpreadsheet().toast("La hoja ya existe.", NOMBRE_HOJA, 4);
+    return;
+  }
+
+  hoja = ss.insertSheet(NOMBRE_HOJA);
+
+  // Encabezados
+  const enc = ["Activa", "Nombre", "PIN", "Email", "Formulario", "Calendario", "Teléfono"];
+  hoja.getRange(1, 1, 1, enc.length).setValues([enc])
+    .setBackground("#1a1a2e").setFontColor("#ffffff")
+    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
+  [70, 120, 80, 220, 280, 220, 140].forEach((w, i) => hoja.setColumnWidth(i + 1, w));
+  hoja.setFrozenRows(1);
+
+  // Datos actuales (migrados desde CONFIG)
+  const datos = [
+    [true,  "Ana",      "1234", "ayarsakarina@gmail.com",          "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
+    [true,  "Fernanda", "5678", "",                                 "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
+    [true,  "Claudia",  "9012", "Cpatriciamonterrozalopez@gmail.com", "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
+  ];
+  hoja.getRange(2, 1, datos.length, enc.length).setValues(datos);
+
+  // Checkbox en col A
+  hoja.getRange("A2:A100").setDataValidation(
+    SpreadsheetApp.newDataValidation().requireCheckbox().build()
+  );
+
+  // Formato visual
+  for (let i = 0; i < datos.length; i++) {
+    hoja.getRange(i + 2, 1, 1, enc.length)
+      .setBackground(i % 2 === 0 ? "#f8f9fa" : "#ffffff")
+      .setFontFamily("Arial").setFontSize(10);
+  }
+  hoja.getRange(2, 3, datos.length, 1).setNumberFormat("@"); // PIN como texto
+
+  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Hoja Personal creada con 3 empleadas.", NOMBRE_HOJA, 6);
+  Logger.log("Hoja Personal creada OK");
 }
