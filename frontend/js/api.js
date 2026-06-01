@@ -32,6 +32,8 @@ export const getAllAseos         = (filtroAseadora, fechaInicio, fechaFin) =>
   post('getAllAseos', { filtroAseadora: filtroAseadora || '', fechaInicio: fechaInicio || '', fechaFin: fechaFin || '' });
 export const asignarAseo         = (codigo, aseadora) => post('asignarAseo', { codigo, aseadora });
 export const moverAseo           = (codigo, nuevaFecha) => post('moverAseo', { codigo, nuevaFecha });
+export const agregarAseo         = (datos) => post('agregarAseo', datos);
+export const getFormRespuestas   = ()      => post('getFormRespuestas', {});
 
 // PROPIEDADES
 export const getPropiedades      = () => post('getPropiedades');

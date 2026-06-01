@@ -97,6 +97,8 @@ function doPost(e) {
     if (action === "actualizarPersonal")  return handleActualizarPersonal(body);
     if (action === "getUploadUrl")        return handleGetUploadUrl(body);
     if (action === "registrarVideo")      return handleRegistrarVideo(body);
+    if (action === "agregarAseo")         return handleAgregarAseo(body);
+    if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
 
     return respond(false, null, "Accion desconocida: " + action);
   } catch(err) {
@@ -456,6 +458,58 @@ function handleMoverAseo(body) {
 }
 
 // ============================================================
+// AGREGAR ASEO MANUAL
+// ============================================================
+
+function handleAgregarAseo(body) {
+  var propiedad  = String(body.propiedad  || "").trim();
+  var idProp     = String(body.idProp     || "").trim();
+  var checkout   = String(body.checkout   || "").trim(); // dd/MM/yyyy
+  var aseadora   = String(body.aseadora   || "").trim();
+  var precio     = Number(body.precio)    || 0;
+  var notas      = String(body.notas      || "").trim();
+  var acceso     = String(body.acceso     || "").trim();
+
+  if (!propiedad || !checkout) return respond(false, null, "Propiedad y fecha requeridas");
+  if (!fechaADate(checkout))   return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
+
+  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
+
+  // Generar codigo unico tipo MAN0001
+  var lastRow = hoja.getLastRow();
+  var num = lastRow;
+  var codigo = "MAN" + String(num).padStart(4, "0");
+
+  // Columnas: A=Codigo, B=IDProp, C=Propiedad, D=Checkin, E=Checkout, F=Noches,
+  //           G=Estado, H=Aseadora, I=Precio, J=Notas, K=Acceso
+  var fila = [
+    codigo,
+    idProp,
+    propiedad,
+    checkout,  // checkin = mismo dia para aseos manuales
+    checkout,
+    0,
+    "Pendiente",
+    aseadora,
+    precio,
+    notas,
+    acceso,
+    "",  // Calendar Event ID
+    ""   // Notas Admin
+  ];
+  hoja.appendRow(fila);
+
+  // Formatear columnas de texto
+  var newRow = hoja.getLastRow();
+  hoja.getRange(newRow, 1, 1, 11).setNumberFormat("@");
+  hoja.getRange(newRow, 9).setNumberFormat("0"); // precio como numero
+
+  return respond(true, { codigo: codigo });
+}
+
+// ============================================================
 // PROPIEDADES
 // ============================================================
 
@@ -759,6 +813,38 @@ function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
       hoja.getRange(i+2, 7).setValue(folderId);
       return;
     }
+  }
+}
+
+// ============================================================
+// FORMULARIO — respuestas del Google Form
+// ============================================================
+
+function handleGetFormRespuestas(body) {
+  var SHEET_ID = "1Ol1gUq3lVVptZYdhjhSM0u08L99rQxeIB8mpO2Tzr2I";
+  try {
+    var ss   = SpreadsheetApp.openById(SHEET_ID);
+    var hoja = ss.getSheets()[0];
+    if (!hoja || hoja.getLastRow() < 2) return respond(true, { headers: [], rows: [] });
+
+    var lastCol = hoja.getLastColumn();
+    var lastRow = hoja.getLastRow();
+    var headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    var datos   = hoja.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+
+    var rows = [];
+    for (var i = 0; i < datos.length; i++) {
+      var row = [];
+      for (var j = 0; j < lastCol; j++) {
+        row.push(String(datos[i][j] || ""));
+      }
+      rows.push(row);
+    }
+
+    rows.reverse(); // mas recientes primero
+    return respond(true, { headers: headers, rows: rows });
+  } catch(err) {
+    return respond(false, null, "No se pudo leer el formulario: " + err.message);
   }
 }
 

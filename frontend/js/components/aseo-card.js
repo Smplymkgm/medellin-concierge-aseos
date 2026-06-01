@@ -1,4 +1,4 @@
-import icons from './icons2.js?v=3';
+import icons from './icons2.js?v=5';
 
 // Shared date helpers (same logic as GAS, client-side)
 export function parseDate(str) {
@@ -18,7 +18,7 @@ export function isToday(dateStr) {
 }
 
 export function isUrgent(aseo) {
-  return isToday(aseo.checkout);
+  return isToday(aseo.checkout) && aseo.estado !== 'Completado' && aseo.estado !== 'Cancelado';
 }
 
 export function formatCOP(n) {

@@ -1,5 +1,5 @@
 // ── Router — thin wrapper around window.__navigateTo ───────────
-import { clearSession } from './auth.js?v=3';
+import { clearSession } from './auth.js?v=4';
 
 export function navigate(screen) {
   if (window.__navigateTo) window.__navigateTo(screen);

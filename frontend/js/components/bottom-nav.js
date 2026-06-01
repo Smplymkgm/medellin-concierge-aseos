@@ -1,4 +1,4 @@
-import icons from './icons2.js?v=3';
+import icons from './icons2.js?v=4';
 
 // Aseadora: 3 tabs
 export function renderNavAseadora(activeTab = 'hoy') {

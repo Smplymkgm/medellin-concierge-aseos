@@ -1,6 +1,6 @@
-import { login }       from '../api.js?v=3';
-import { saveSession } from '../auth.js?v=3';
-import icons           from '../components/icons2.js?v=3';
+import { login }       from '../api.js?v=4';
+import { saveSession } from '../auth.js?v=4';
+import icons           from '../components/icons2.js?v=4';
 
 let _pin = '';
 const PERSONAL = ['Ana', 'Fernanda', 'Claudia', 'Admin'];
@@ -87,19 +87,21 @@ async function doLogin() {
   btn.disabled    = true;
   btn.textContent = 'Verificando...';
 
+  let session = null;
   try {
     const data = await login(nombre, _pin);
-    saveSession({ rol: data.rol, nombre: data.nombre });
-    _pin = '';
-    updatePinUI();
-    // Navigate (window.__navigateTo set by main.js)
-    if (window.__navigateTo) window.__navigateTo(data.rol === 'admin' ? 'admin' : 'aseadora');
+    session = { rol: data.rol, nombre: data.nombre };
   } catch {
     document.getElementById('login-error').style.display = 'block';
+  } finally {
     _pin = '';
     updatePinUI();
-  } finally {
     btn.disabled    = false;
     btn.textContent = 'Entrar';
+  }
+
+  if (session) {
+    saveSession(session);
+    if (window.__navigateTo) window.__navigateTo(session.rol === 'admin' ? 'admin' : 'aseadora');
   }
 }
