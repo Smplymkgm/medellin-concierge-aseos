@@ -206,7 +206,11 @@ function handleGetAseos(body) {
         accesos:   accesoRaw ? accesoRaw.split("|").map(function(a){return a.trim();}).filter(Boolean) : [],
       };
 
-      if (checkout >= hoy) {
+      if (estado === "Completado") {
+        // Completado siempre va al historial, sin importar la fecha
+        aseo.fechaCompletado = String(r[12] || "");
+        historial.push(aseo);
+      } else if (checkout >= hoy) {
         if (estado !== "Cancelado") proximos.push(aseo);
       } else {
         aseo.fechaCompletado = String(r[12] || "");
