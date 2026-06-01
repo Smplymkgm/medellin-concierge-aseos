@@ -1,9 +1,8 @@
 import { getAllAseos, asignarAseo, moverAseo, getPersonal as getPersonalApi, actualizarPersonal } from '../api.js';
 import { logout }                  from '../router.js';
 import icons                       from '../components/icons.js';
-import { renderNavAdmin }          from '../components/bottom-nav.js';
 import { MiniCalendar }            from '../components/calendar.js';
-import { openModal, closeModal, setModalContent } from '../components/modal.js';
+import { openModal, closeModal }   from '../components/modal.js';
 import { showToast }               from './toast.js';
 import {
   renderAseoCardAdmin, isUrgent, formatCOP, formatFecha, parseDate, isToday
@@ -20,17 +19,39 @@ let _calSelected = null;
 
 export function renderAdmin() {
   return `
-  <div class="header">
+  <div class="header" style="justify-content:space-between">
     <div>
       <div class="header-title">Admin</div>
-      <div class="header-sub" id="adm-sub">Medellin Concierge</div>
+      <div class="header-sub" id="adm-sub" style="font-size:11px;color:var(--text-tertiary)">Medellin Concierge</div>
     </div>
-    <button class="header-action" id="adm-logout" title="Cerrar sesión">
-      ${icons.get('logout', 20)}
-    </button>
+    <div style="display:flex;gap:4px">
+      <button class="header-action" id="adm-refresh" title="Actualizar">
+        ${icons.get('sync', 20)}
+      </button>
+      <button class="header-action" id="adm-logout" title="Cerrar sesión">
+        ${icons.get('logout', 20)}
+      </button>
+    </div>
   </div>
-  <div class="content" id="adm-content"></div>
-  ${renderNavAdmin('aseos')}`;
+  <div class="content" id="adm-content" style="padding-bottom:calc(var(--nav-h) + 16px)"></div>
+  <nav class="bottom-nav" id="adm-nav">
+    <button class="nav-item active" data-tab="aseos">
+      ${icons.get('list', 20)}
+      Aseos
+    </button>
+    <button class="nav-item" data-tab="calendario">
+      ${icons.get('calendar', 20)}
+      Calendario
+    </button>
+    <button class="nav-item" data-tab="propiedades">
+      ${icons.get('home', 20)}
+      Propiedades
+    </button>
+    <button class="nav-item" data-tab="personal">
+      ${icons.get('users', 20)}
+      Personal
+    </button>
+  </nav>`;
 }
 
 // ── Init ───────────────────────────────────────────────────────
@@ -40,7 +61,12 @@ export function initAdmin() {
     if (confirm('¿Cerrar sesión?')) logout();
   });
 
-  // Wire bottom nav
+  document.getElementById('adm-refresh').addEventListener('click', async () => {
+    _aseos = null; _personal = null;
+    await loadData();
+    switchTab(_activeTab);
+  });
+
   document.getElementById('adm-nav').addEventListener('click', e => {
     const btn = e.target.closest('.nav-item');
     if (!btn) return;
