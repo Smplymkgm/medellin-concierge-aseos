@@ -815,7 +815,33 @@ function onOpen() {
     .addItem("📅 Sincronizar Google Calendar",   "sincronizarGoogleCalendar")
     .addSeparator()
     .addItem("⚙️ Crear triggers automáticos",    "crearTriggersAutomaticos")
+    .addItem("👤 Agregar Admin a Personal",       "agregarAdmin")
     .addToUi();
+}
+
+// ============================================================
+// SETUP — agregar Admin a hoja Personal (correr UNA vez)
+// ============================================================
+
+function agregarAdmin() {
+  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+  if (!hoja) { Logger.log("Hoja Personal no existe"); return; }
+
+  // Verificar si ya existe
+  if (hoja.getLastRow() > 1) {
+    var nombres = hoja.getRange(2, 2, hoja.getLastRow()-1, 1).getValues().flat().map(String);
+    if (nombres.some(function(n){ return n.toLowerCase() === "admin"; })) {
+      SpreadsheetApp.getActiveSpreadsheet().toast("Admin ya existe en Personal.", "Setup", 4);
+      return;
+    }
+  }
+
+  var fi = hoja.getLastRow() + 1;
+  hoja.getRange(fi, 1, 1, 7).setValues([[true, "Admin", "2025", "michaelmgm1249@gmail.com", "", "", ""]]);
+  hoja.getRange(fi, 3, 1, 1).setNumberFormat("@"); // PIN como texto
+  hoja.getRange(fi, 1, 1, 7).setBackground("#fff9e6").setFontFamily("Arial").setFontSize(10);
+  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Admin agregado a Personal (PIN: 2025).", "Setup", 5);
 }
 
 function crearTriggersAutomaticos() {
