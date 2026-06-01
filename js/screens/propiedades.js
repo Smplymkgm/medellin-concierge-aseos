@@ -1,5 +1,5 @@
 import { getPropiedades, agregarPropiedad, actualizarPropiedad } from '../api.js';
-import icons                       from '../components/icons.js';
+import icons                       from '../components/icons2.js';
 import { openModal, closeModal }   from '../components/modal.js';
 import { showToast }               from './toast.js';
 import { formatCOP }               from '../components/aseo-card.js';

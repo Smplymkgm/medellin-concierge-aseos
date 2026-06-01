@@ -1,6 +1,6 @@
 import { getAllAseos, asignarAseo, moverAseo, getPersonal as getPersonalApi, actualizarPersonal } from '../api.js';
 import { logout }                  from '../router.js';
-import icons                       from '../components/icons.js';
+import icons                       from '../components/icons2.js';
 import { MiniCalendar }            from '../components/calendar.js';
 import { openModal, closeModal }   from '../components/modal.js';
 import { showToast }               from './toast.js';
