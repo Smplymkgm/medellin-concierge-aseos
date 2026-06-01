@@ -1,4 +1,4 @@
-import icons from './icons.js';
+import icons from './icons2.js';
 
 // Shared date helpers (same logic as GAS, client-side)
 export function parseDate(str) {
