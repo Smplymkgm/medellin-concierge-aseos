@@ -190,20 +190,32 @@ function renderCalDayList(dateStr, allAseos) {
 
 function renderHistorial() {
   if (!_data) { showLoading(); return; }
-  const historial   = _data.historial || [];
-  const totalGanado = _data.totalGanado || 0;
-  const completados = historial.filter(a => a.estado === 'Completado').length;
-  const content     = document.getElementById('ase-content');
+  const historial = _data.historial || [];
+  const content   = document.getElementById('ase-content');
+
+  // Calcular mes actual
+  const ahora    = new Date();
+  const claveHoy = ahora.getFullYear() + '-' + String(ahora.getMonth()+1).padStart(2,'0');
+  const estesMes = historial.filter(a => {
+    const d = parseDate(a.checkout);
+    if (!d) return false;
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') === claveHoy;
+  });
+  const gananciasMes    = estesMes.filter(a => a.estado === 'Completado').reduce((s,a) => s + a.precio, 0);
+  const completadosMes  = estesMes.filter(a => a.estado === 'Completado').length;
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesLabel = MESES[ahora.getMonth()] + ' ' + ahora.getFullYear();
 
   let html = `
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label">Total ganado</div>
-        <div class="stat-value accent">${formatCOP(totalGanado)}</div>
+        <div class="stat-label">${mesLabel}</div>
+        <div class="stat-value accent">${formatCOP(gananciasMes)}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Completados</div>
-        <div class="stat-value">${completados}</div>
+        <div class="stat-label">Este mes</div>
+        <div class="stat-value">${completadosMes} aseo${completadosMes !== 1 ? 's' : ''}</div>
       </div>
     </div>`;
 
