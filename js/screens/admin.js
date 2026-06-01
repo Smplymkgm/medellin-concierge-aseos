@@ -1,12 +1,12 @@
-import { getAllAseos, asignarAseo, moverAseo, getPersonal as getPersonalApi, actualizarPersonal } from '../api.js';
-import { logout }                  from '../router.js';
-import icons                       from '../components/icons2.js';
-import { MiniCalendar }            from '../components/calendar.js';
-import { openModal, closeModal }   from '../components/modal.js';
-import { showToast }               from './toast.js';
+import { getAllAseos, asignarAseo, moverAseo, getPersonal as getPersonalApi, actualizarPersonal } from '../api.js?v=3';
+import { logout }                  from '../router.js?v=3';
+import icons                       from '../components/icons2.js?v=3';
+import { MiniCalendar }            from '../components/calendar.js?v=3';
+import { openModal, closeModal }   from '../components/modal.js?v=3';
+import { showToast }               from './toast.js?v=3';
 import {
   renderAseoCardAdmin, isUrgent, formatCOP, formatFecha, parseDate, isToday
-} from '../components/aseo-card.js';
+} from '../components/aseo-card.js?v=3';
 
 let _aseos     = null;
 let _personal  = null;

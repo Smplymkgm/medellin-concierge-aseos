@@ -1,13 +1,13 @@
-import { getAseos, completarAseo } from '../api.js';
-import { getNombre }               from '../auth.js';
-import { logout }                  from '../router.js';
-import icons                       from '../components/icons2.js';
-import { MiniCalendar }            from '../components/calendar.js';
-import { openModal, closeModal }   from '../components/modal.js';
-import { showToast }               from './toast.js';
+import { getAseos, completarAseo } from '../api.js?v=3';
+import { getNombre }               from '../auth.js?v=3';
+import { logout }                  from '../router.js?v=3';
+import icons                       from '../components/icons2.js?v=3';
+import { MiniCalendar }            from '../components/calendar.js?v=3';
+import { openModal, closeModal }   from '../components/modal.js?v=3';
+import { showToast }               from './toast.js?v=3';
 import {
   renderAseoCard, isToday, isUrgent, formatCOP, formatFecha, parseDate
-} from '../components/aseo-card.js';
+} from '../components/aseo-card.js?v=3';
 
 let _data      = null;
 let _activeTab = 'hoy';

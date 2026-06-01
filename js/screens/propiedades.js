@@ -1,8 +1,8 @@
-import { getPropiedades, agregarPropiedad, actualizarPropiedad } from '../api.js';
-import icons                       from '../components/icons2.js';
-import { openModal, closeModal }   from '../components/modal.js';
-import { showToast }               from './toast.js';
-import { formatCOP }               from '../components/aseo-card.js';
+import { getPropiedades, agregarPropiedad, actualizarPropiedad } from '../api.js?v=3';
+import icons                       from '../components/icons2.js?v=3';
+import { openModal, closeModal }   from '../components/modal.js?v=3';
+import { showToast }               from './toast.js?v=3';
+import { formatCOP }               from '../components/aseo-card.js?v=3';
 
 let _props = null;
 
