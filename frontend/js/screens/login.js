@@ -1,6 +1,6 @@
-import { login }       from '../api.js';
-import { saveSession } from '../auth.js';
-import icons           from '../components/icons2.js';
+import { login }       from '../api.js?v=3';
+import { saveSession } from '../auth.js?v=3';
+import icons           from '../components/icons2.js?v=3';
 
 let _pin = '';
 const PERSONAL = ['Ana', 'Fernanda', 'Claudia', 'Admin'];
