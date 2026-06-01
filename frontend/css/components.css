@@ -79,7 +79,7 @@
 .nav-item.active {
   color: var(--accent);
 }
-.nav-item svg { width: 20px; height: 20px; }
+.nav-item svg { width: 20px; height: 20px; color: inherit; stroke: currentColor; }
 
 /* ── Scroll Content ──────────────────────────────── */
 .content {
