@@ -2,6 +2,9 @@
 // CONFIGURACIÓN
 // ============================================================
 
+var SPREADSHEET_ID = '1iKbcU8lcr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q';
+function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
+
 const CONFIG = {
   empleadas: [
     { nombre: "Ana",      email: "ayarsakarina@gmail.com" },
@@ -87,7 +90,7 @@ function testFechas() {
 // ============================================================
 
 function getPropiedades() {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   let   hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja) hoja = crearHojaPropiedades();
   if (hoja.getLastRow() < 2) return [];
@@ -110,7 +113,7 @@ function getPropiedades() {
 }
 
 function crearHojaPropiedades() {
-  const ss  = SpreadsheetApp.getActiveSpreadsheet();
+  const ss  = getSS();
   const ex  = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (ex) ss.deleteSheet(ex);
   const hoja = ss.insertSheet(CONFIG.hojaPropiedades);
@@ -159,7 +162,7 @@ function crearHojaPropiedades() {
       .setFontFamily("Arial").setFontSize(10);
   }
   hoja.getRange(2,3,props.length,1).setNumberFormat("$#,##0");
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Hoja Propiedades creada.", "Propiedades", 6);
+  getSS().toast("✅ Hoja Propiedades creada.", "Propiedades", 6);
   return hoja;
 }
 
@@ -191,7 +194,7 @@ function onOpen() {
 // ============================================================
 
 function getPersonal() {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   const hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return [];
   const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
@@ -242,7 +245,7 @@ function getPersonalParaApp() {
 }
 
 function getDatosAseadora(nombre) {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   const hoja = ss.getSheetByName(CONFIG.hojaAseos);
 
   const proximos  = []; // checkout >= hoy, no cancelados
@@ -320,7 +323,7 @@ function getDatosAseadora(nombre) {
 // ============================================================
 
 function finalizarAseo(codigo, nombre) {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   const hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return { ok: false, msg: "Hoja no encontrada" };
 
@@ -367,7 +370,7 @@ function finalizarAseo(codigo, nombre) {
 // ============================================================
 
 function autoCompletarAseosPasados() {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   const hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return;
 
@@ -419,10 +422,10 @@ function autoCompletarAseosPasados() {
 // 7 Aseadora | 8 Estado | 9 Precio | 10 Notas | 11 Acceso | 12 Cal ID (hidden) | 13 Completado
 
 function crearHojaAseos() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSS();
   let   h  = ss.getSheetByName(CONFIG.hojaAseos);
   if (h) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("La hoja ya existe.", CONFIG.hojaAseos, 4);
+    getSS().toast("La hoja ya existe.", CONFIG.hojaAseos, 4);
     return h;
   }
   h = ss.insertSheet(CONFIG.hojaAseos);
@@ -444,12 +447,12 @@ function crearHojaAseos() {
       .requireValueInList(["Pendiente","Completado","Cancelado"], true)
       .setAllowInvalid(false).build()
   );
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Hoja creada.", CONFIG.hojaAseos, 4);
+  getSS().toast("✅ Hoja creada.", CONFIG.hojaAseos, 4);
   return h;
 }
 
 function sincronizarHojaAseos() {
-  const ss     = SpreadsheetApp.getActiveSpreadsheet();
+  const ss     = getSS();
   const master = ss.getSheetByName(CONFIG.hojaMaestra);
   if (!master || master.getLastRow() < 2) return;
 
@@ -545,7 +548,7 @@ function sincronizarHojaAseos() {
 // ============================================================
 
 function sincronizarCalendarios() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSS();
   let hoja = ss.getSheetByName(CONFIG.hojaMaestra);
   if (!hoja) hoja = ss.insertSheet(CONFIG.hojaMaestra);
 
@@ -581,7 +584,7 @@ function sincronizarCalendarios() {
   // Sync to the permanent Todos los Aseos sheet
   sincronizarHojaAseos();
 
-  SpreadsheetApp.getActiveSpreadsheet().toast(
+  getSS().toast(
     "✅ " + reservas.length + " reservas sincronizadas", "Airbnb Sync", 5);
 }
 
@@ -728,7 +731,7 @@ function aplicarDropdowns(hoja) {
 // ============================================================
 
 function sincronizarGoogleCalendar() {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   const hoja = ss.getSheetByName(CONFIG.hojaMaestra);
   if (!hoja || hoja.getLastRow() < 2) return;
   const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
@@ -787,7 +790,7 @@ function sincronizarGoogleCalendar() {
     hoja.getRange(fila, 12).setValue(nEv.getId());
     creados++;
   }
-  SpreadsheetApp.getActiveSpreadsheet().toast(
+  getSS().toast(
     "📅 Calendario: " + creados + " creados, " + actualizados + " actualizados", "Google Calendar Sync", 5);
 }
 
@@ -796,7 +799,7 @@ function sincronizarGoogleCalendar() {
 // ============================================================
 
 function reenviarInvitacionSeleccionada() {
-  const hoja    = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.hojaMaestra);
+  const hoja    = getSS().getSheetByName(CONFIG.hojaMaestra);
   const fila    = hoja.getActiveRange().getRow(); if (fila < 2) return;
   const d       = hoja.getRange(fila, 1, 1, 13).getValues()[0];
   const dispD   = hoja.getRange(fila, 4, 1, 2).getDisplayValues()[0];
@@ -813,7 +816,7 @@ function reenviarInvitacionSeleccionada() {
       const ev = cal.getEventById(eventId);
       if (ev) {
         ev.removeGuest(emp.email); ev.addGuest(emp.email);
-        SpreadsheetApp.getActiveSpreadsheet().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
+        getSS().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
         return;
       }
     } catch(e) {}
@@ -823,11 +826,11 @@ function reenviarInvitacionSeleccionada() {
   for (const ev of cal.getEvents(ini, fin)) {
     if (ev.getTitle().includes(prop)) {
       ev.removeGuest(emp.email); ev.addGuest(emp.email);
-      SpreadsheetApp.getActiveSpreadsheet().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
+      getSS().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
       return;
     }
   }
-  SpreadsheetApp.getActiveSpreadsheet().toast("⚠️ No se encontró el evento", "Error", 4);
+  getSS().toast("⚠️ No se encontró el evento", "Error", 4);
 }
 
 // ============================================================
@@ -835,7 +838,7 @@ function reenviarInvitacionSeleccionada() {
 // ============================================================
 
 function importarAseosPasados() {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   let   hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja) hoja = crearHojaAseos();
 
@@ -869,7 +872,7 @@ function importarAseosPasados() {
 
   const nuevos = aseos.filter(a => !existentes.has(a[0]));
   if (!nuevos.length) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("Ya estaban todos importados.", "Importar", 4);
+    getSS().toast("Ya estaban todos importados.", "Importar", 4);
     return;
   }
 
@@ -882,7 +885,7 @@ function importarAseosPasados() {
       .setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
   }
 
-  SpreadsheetApp.getActiveSpreadsheet()
+  getSS()
     .toast("✅ " + nuevos.length + " aseos importados. Asigna las aseadoras en la hoja.", "Importar", 6);
 }
 
@@ -940,7 +943,7 @@ function agregarAseoManual() {
 }
 
 function guardarAseoManual(data) {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss   = getSS();
   let   hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja) hoja = crearHojaAseos();
 
@@ -975,7 +978,7 @@ function guardarAseoManual(data) {
   hoja.getRange(fi, 1, 1, 13)
     .setBackground('#fff9e6').setFontFamily('Arial').setFontSize(10);
 
-  SpreadsheetApp.getActiveSpreadsheet()
+  getSS()
     .toast('✅ Aseo manual agregado: ' + codigo, 'Listo', 5);
   return '✅ Aseo manual agregado con código ' + codigo;
 }
@@ -991,7 +994,7 @@ function crearTriggersAutomaticos() {
   // Corre a las 10 PM — requiere que la zona horaria del proyecto sea America/Bogota
   // (verificar en Apps Script → Configuración del proyecto)
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
+  getSS().toast("✅ Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
 }
 
 
@@ -1000,13 +1003,13 @@ function crearTriggersAutomaticos() {
 // ============================================================
 
 function crearHojaPersonal() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSS();
   const NOMBRE_HOJA = "👩 Personal";
 
   // Si ya existe, no recrear
   let hoja = ss.getSheetByName(NOMBRE_HOJA);
   if (hoja) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("La hoja ya existe.", NOMBRE_HOJA, 4);
+    getSS().toast("La hoja ya existe.", NOMBRE_HOJA, 4);
     return;
   }
 
@@ -1041,6 +1044,96 @@ function crearHojaPersonal() {
   }
   hoja.getRange(2, 3, datos.length, 1).setNumberFormat("@"); // PIN como texto
 
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Hoja Personal creada con 3 empleadas.", NOMBRE_HOJA, 6);
+  getSS().toast("✅ Hoja Personal creada con 3 empleadas.", NOMBRE_HOJA, 6);
   Logger.log("Hoja Personal creada OK");
+}
+
+// ============================================================
+// WEB APP — doPost (API JSON para el frontend)
+// ============================================================
+
+function respond(ok, data, error) {
+  var payload = { ok: ok };
+  if (data !== undefined && data !== null) payload.data = data;
+  if (error) payload.error = String(error);
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var action = body.action || '';
+
+    if (action === 'getPersonal') {
+      var p = getPersonal().map(function(u) {
+        return { nombre: u.nombre, rol: u.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora' };
+      });
+      return respond(true, p);
+    }
+
+    if (action === 'login') {
+      var ok = loginAseadora(body.nombre, body.pin);
+      if (!ok) return respond(false, null, 'PIN incorrecto');
+      var personal = getPersonal();
+      var user = personal.filter(function(p) { return p.nombre.toLowerCase() === String(body.nombre).trim().toLowerCase(); })[0];
+      var rol = user && user.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora';
+      return respond(true, { nombre: String(body.nombre).trim(), rol: rol, pin: body.pin });
+    }
+
+    if (action === 'getDatos') {
+      var nombre = body.nombre || '';
+      var rol = body.rol || 'aseadora';
+      var personal2 = getPersonal().map(function(u) {
+        return { nombre: u.nombre, rol: u.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora', pin: u.pin, email: u.email, tel: u.telefono || '' };
+      });
+      var props = getPropiedades().map(function(p) {
+        return { id: p.id, nombre: p.nombre, precio: p.precioAseoInterno, acceso: p.acceso };
+      });
+      var aseos = rol === 'admin' ? getAllAseos() : getAseosPorAseadora(nombre);
+      return respond(true, { personal: personal2, propiedades: props, aseos: aseos });
+    }
+
+    if (action === 'completar') {
+      var result = finalizarAseo(body.codigo, body.nombre);
+      return respond(result.ok, null, result.ok ? null : result.msg);
+    }
+
+    return respond(false, null, 'Acción desconocida: ' + action);
+  } catch(err) {
+    return respond(false, null, err.message);
+  }
+}
+
+function getAllAseos() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return [];
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var result = [];
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    var cod = String(r[0]);
+    if (!cod) continue;
+    result.push({
+      codigo:    cod,
+      idProp:    String(r[1]).trim(),
+      propiedad: String(r[2]).trim(),
+      checkin:   disp[i][0] || fechaToStr(r[3]),
+      checkout:  disp[i][1] || fechaToStr(r[4]),
+      noches:    Number(r[5]) || 0,
+      asignada:  String(r[6] || ''),
+      estado:    String(r[7] || ''),
+      precio:    Number(r[8]) || 0,
+      notas:     String(r[9] || ''),
+      acceso:    String(r[10] || ''),
+    });
+  }
+  return result;
+}
+
+function getAseosPorAseadora(nombre) {
+  return getAllAseos().filter(function(a) { return a.asignada === nombre; });
 }
