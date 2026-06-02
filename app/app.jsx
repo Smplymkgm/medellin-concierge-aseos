@@ -1,26 +1,107 @@
 /* ============================================================
    Login — name dropdown + PIN dots + on-screen keypad
    ============================================================ */
-const { useState: useStateL } = React;
+const { useState: useStateL, useEffect: useEffectL } = React;
 
-function Login({ onLogin }) {
-  const [nombre, setNombre] = useStateL(getPersonal()[0].nombre);
-  const [pin, setPin] = useStateL('');
-  const [error, setError] = useStateL(false);
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec';
 
-  function press(n) {
-    setError(false);
-    setPin(p => (p.length >= 4 ? p : p + n));
-  }
-  function back() { setError(false); setPin(p => p.slice(0, -1)); }
+function gasPost(body) {
+  return fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
 
-  React.useEffect(() => {
+/* Parse "dd/MM/yyyy" → Date */
+function parseDateStr(s) {
+  if (!s) return new Date();
+  var p = String(s).split('/');
+  if (p.length !== 3) return new Date();
+  return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+}
+
+/* Transform API aseos → frontend format */
+function transformAseos(apiAseos) {
+  var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  return (apiAseos || []).map(function(a) {
+    var checkout = parseDateStr(a.checkout);
+    var checkin  = parseDateStr(a.checkin);
+    checkout.setHours(0, 0, 0, 0);
+    var isDone = a.estado === 'Completado' || a.estado === 'Cancelado';
+    var isToday = sameDay(checkout, hoy);
+    var isPast  = checkout < hoy;
+    var status  = isDone        ? 'done'       :
+                  !a.asignada   ? 'unassigned' :
+                  (isToday || isPast) ? 'urgent' : 'pending';
+    return {
+      codigo:   a.codigo,
+      prop:     a.idProp,
+      checkin:  checkin,
+      checkout: checkout,
+      status:   status,
+      asignada: a.asignada || null,
+      priority: isToday && !isDone,
+      notas:    a.notas || '',
+      precio:   a.precio || 0,
+    };
+  });
+}
+
+/* Transform API propiedades → frontend format */
+function transformProps(apiProps) {
+  return (apiProps || []).map(function(p) {
+    var partes = String(p.acceso || '').split('|').map(function(s) { return s.trim(); });
+    var dir = partes.filter(function(s) { return s.toLowerCase().includes('dirección') || s.toLowerCase().includes('direccion'); })[0] || partes[partes.length - 1] || '';
+    return {
+      id:       p.id,
+      nombre:   p.nombre,
+      barrio:   '',
+      direccion: dir,
+      precio:   p.precio || 0,
+      claves:   { acceso: p.acceso || '' },
+    };
+  });
+}
+
+/* Transform API personal → frontend format */
+function transformPersonal(apiPersonal) {
+  return (apiPersonal || []).map(function(p, i) {
+    return {
+      codigo:  '#' + String(i + 1).padStart(4, '0'),
+      nombre:  p.nombre,
+      pin:     p.pin || '',
+      rol:     p.rol || 'aseadora',
+      tel:     p.tel || '',
+      email:   p.email || '',
+    };
+  });
+}
+
+function Login({ personalList, onLogin }) {
+  const [nombre, setNombre] = useStateL(personalList.length ? personalList[0].nombre : '');
+  const [pin, setPin]       = useStateL('');
+  const [error, setError]   = useStateL(false);
+  const [loading, setLoading] = useStateL(false);
+
+  function press(n) { setError(false); setPin(p => (p.length >= 4 ? p : p + n)); }
+  function back()   { setError(false); setPin(p => p.slice(0, -1)); }
+
+  useEffectL(() => {
     if (pin.length !== 4) return;
-    const user = getPersonal().find(p => p.nombre === nombre && p.pin === pin);
-    if (user) { const t = setTimeout(() => onLogin(user), 160); return () => clearTimeout(t); }
-    const t = setTimeout(() => { setError(true); setPin(''); }, 200);
-    return () => clearTimeout(t);
-  }, [pin, nombre]);
+    setLoading(true);
+    gasPost({ action: 'login', nombre, pin })
+      .then(function(res) {
+        setLoading(false);
+        if (res.ok) {
+          setTimeout(function() { onLogin(res.data); }, 160);
+        } else {
+          setError(true); setPin('');
+        }
+      })
+      .catch(function() {
+        setLoading(false); setError(true); setPin('');
+      });
+  }, [pin]);
 
   return (
     <div className="login">
@@ -34,7 +115,7 @@ function Login({ onLogin }) {
         <label className="label field-label sec">Nombre</label>
         <div className="select">
           <select value={nombre} onChange={e => { setNombre(e.target.value); setPin(''); setError(false); }}>
-            {getPersonal().map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.rol === 'admin' ? ' (admin)' : ''}</option>)}
+            {personalList.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.rol === 'admin' ? ' (admin)' : ''}</option>)}
           </select>
           <Icon name="chevron-down" size={20} className="chev" />
         </div>
@@ -49,15 +130,18 @@ function Login({ onLogin }) {
         {error && <div className="caption center" style={{ color: 'var(--accent)', marginBottom: 8 }}>PIN incorrecto</div>}
       </div>
 
-      <div className="keypad">
-        {[1,2,3,4,5,6,7,8,9].map(n => <button key={n} className="key" onClick={() => press(String(n))}>{n}</button>)}
-        <button className="key blank" disabled></button>
-        <button className="key" onClick={() => press('0')}>0</button>
-        <button className="key" onClick={back} aria-label="Borrar"><Icon name="chevron-left" size={22} /></button>
-      </div>
+      {loading
+        ? <div className="caption center" style={{ padding: 24, color: 'var(--sec)' }}>Verificando…</div>
+        : <div className="keypad">
+            {[1,2,3,4,5,6,7,8,9].map(n => <button key={n} className="key" onClick={() => press(String(n))}>{n}</button>)}
+            <button className="key blank" disabled></button>
+            <button className="key" onClick={() => press('0')}>0</button>
+            <button className="key" onClick={back} aria-label="Borrar"><Icon name="chevron-left" size={22} /></button>
+          </div>
+      }
 
       <div className="role-hint">
-        <span className="caption">{getPersonal().filter(p => p.rol === 'aseadora').map(p => p.nombre).join(' · ')} son aseadoras · Admin para gestión</span>
+        <span className="caption">{personalList.filter(p => p.rol === 'aseadora').map(p => p.nombre).join(' · ')} son aseadoras · Admin para gestión</span>
       </div>
     </div>
   );
@@ -67,28 +151,32 @@ function Login({ onLogin }) {
    Root App
    ============================================================ */
 function App() {
-  const [session, setSession] = useStateL(null);     // PERSONAL entry
-  const [aseos, setAseos] = useStateL(() => ASEOS.map(a => ({ ...a })));
-  const [props, setProps] = useStateL(getProps);
+  const [session, setSession]   = useStateL(null);
+  const [aseos, setAseos]       = useStateL(() => ASEOS.map(a => ({ ...a })));
+  const [props, setProps]       = useStateL(getProps);
   const [personal, setPersonal] = useStateL(getPersonal);
   const [editProp, setEditProp] = useStateL(null);
-  const [editPropOpen, setEditPropOpen] = useStateL(false);
+  const [editPropOpen, setEditPropOpen]   = useStateL(false);
   const [addCleanerOpen, setAddCleanerOpen] = useStateL(false);
-  const [tab, setTab] = useStateL('hoy');
-  const [openId, setOpenId] = useStateL(null);
-  const [propId, setPropId] = useStateL(null);
+  const [tab, setTab]           = useStateL('hoy');
+  const [openId, setOpenId]     = useStateL(null);
+  const [propId, setPropId]     = useStateL(null);
+
+  // Login screen state
+  const [personalList, setPersonalList] = useStateL([]);
+  const [loadingPersonal, setLoadingPersonal] = useStateL(true);
 
   // sheets
-  const [completar, setCompletar] = useStateL(null);
+  const [completar, setCompletar]       = useStateL(null);
   const [completarOpen, setCompletarOpen] = useStateL(false);
-  const [reassign, setReassign] = useStateL(null);
+  const [reassign, setReassign]         = useStateL(null);
   const [reassignOpen, setReassignOpen] = useStateL(false);
-  const [agregarOpen, setAgregarOpen] = useStateL(false);
+  const [agregarOpen, setAgregarOpen]   = useStateL(false);
 
   // calendar
   const [calMonth, setCalMonth] = useStateL(TODAY.getMonth());
-  const [calYear, setCalYear] = useStateL(TODAY.getFullYear());
-  const [calSel, setCalSel] = useStateL(TODAY);
+  const [calYear, setCalYear]   = useStateL(TODAY.getFullYear());
+  const [calSel, setCalSel]     = useStateL(TODAY);
 
   // admin filters
   const [filter, setFilter] = useStateL({ estado: 'all', aseadora: null });
@@ -97,10 +185,44 @@ function App() {
   const [toast, setToast] = useStateL(null);
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2200); }
 
-  function login(user) {
-    setSession(user);
-    setTab(user.rol === 'admin' ? 'aseos' : 'hoy');
+  // Fetch personal list on mount for login dropdown
+  useEffectL(function() {
+    gasPost({ action: 'getPersonal' })
+      .then(function(res) {
+        if (res.ok && res.data && res.data.length) {
+          setPersonalList(res.data);
+        } else {
+          // Fallback to hardcoded
+          setPersonalList(getPersonal().map(p => ({ nombre: p.nombre, rol: p.rol })));
+        }
+        setLoadingPersonal(false);
+      })
+      .catch(function() {
+        setPersonalList(getPersonal().map(p => ({ nombre: p.nombre, rol: p.rol })));
+        setLoadingPersonal(false);
+      });
+  }, []);
+
+  function login(userInfo) {
+    const nombre = userInfo.nombre;
+    const rol    = userInfo.rol;
+    setSession(userInfo);
+    setTab(rol === 'admin' ? 'aseos' : 'hoy');
     setOpenId(null); setPropId(null);
+
+    // Fetch real data from API
+    gasPost({ action: 'getDatos', nombre, rol })
+      .then(function(res) {
+        if (res.ok && res.data) {
+          const realAseos    = transformAseos(res.data.aseos);
+          const realProps    = transformProps(res.data.propiedades);
+          const realPersonal = transformPersonal(res.data.personal);
+          setAseos(realAseos);
+          setLiveProps(realProps); setProps(realProps);
+          setLivePersonal(realPersonal); setPersonal(realPersonal);
+        }
+      })
+      .catch(function() {});
   }
   function logout() { setSession(null); }
 
@@ -124,6 +246,11 @@ function App() {
           video: payload.file && payload.file.name }
       : x));
     setCompletarOpen(false); setOpenId(null);
+
+    // Save to Google Sheets
+    gasPost({ action: 'completar', codigo: a.codigo, nombre: session.nombre })
+      .catch(function() {});
+
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
   }
@@ -183,8 +310,27 @@ function App() {
     showToast('Aseo agregado · ' + prop.nombre);
   }
 
+  // Loading screen while fetching personal list
+  if (loadingPersonal) {
+    return (
+      <div className="stage">
+        <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+          <div className="login-mark"><Icon name="home" size={26} /></div>
+          <div className="login-title">Medcon Cleanings</div>
+          <div className="caption sec">Conectando…</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!session) {
-    return <div className="stage"><div className="screen"><Login onLogin={login} /></div></div>;
+    return (
+      <div className="stage">
+        <div className="screen">
+          <Login personalList={personalList} onLogin={login} />
+        </div>
+      </div>
+    );
   }
 
   const isAdmin = session.rol === 'admin';
