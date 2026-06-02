@@ -80,7 +80,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, role }) {
               <Icon name="key" size={16} />
               <div className="keypair">
                 <span className="detail-label">Acceso</span>
-                <span className="detail-value">Lockbox {a.claves.lockbox} · {a.claves.porteria}</span>
+                <span className="detail-value">{a.claves && a.claves.acceso ? a.claves.acceso : (a.claves && a.claves.lockbox ? 'Lockbox ' + a.claves.lockbox + ' · ' + a.claves.porteria : 'Sin información')}</span>
               </div>
             </div>
             {a.notas && (
