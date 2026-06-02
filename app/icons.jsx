@@ -5,7 +5,7 @@
    ============================================================ */
 
 const ICON_PATHS = {
-  home: <><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9.5"/><path d="M10 20v-5h4v5"/></>,
+  home: <><path d="M4 10.5 L12 4 L20 10.5"/><path d="M6 9.5 V19 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1-1 V9.5"/><path d="M10 20 v-5 h4 v5"/></>,
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/></>,
   list: <><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></>,
   check: <path d="m5 12.5 4.5 4.5L19 7"/>,
