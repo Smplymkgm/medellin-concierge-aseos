@@ -247,9 +247,20 @@ function App() {
       : x));
     setCompletarOpen(false); setOpenId(null);
 
-    // Save to Google Sheets
-    gasPost({ action: 'completar', codigo: a.codigo, nombre: session.nombre })
-      .catch(function() {});
+    // Save to Google Sheets with all form data
+    gasPost({
+      action: 'completarAseo',
+      codigo: a.codigo,
+      nombre: session.nombre,
+      entrada: payload.entrada,
+      salida: payload.salida,
+      notas: payload.notas || '',
+      revision: payload.revision,
+      reposicion: payload.reposicion,
+      funcionamiento: payload.funcionamiento,
+      reporte: payload.reporte || '',
+      video: payload.file && payload.file.name,
+    }).catch(function() {});
 
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
