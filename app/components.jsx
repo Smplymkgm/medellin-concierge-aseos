@@ -1,0 +1,259 @@
+/* ============================================================
+   Shared components
+   ============================================================ */
+const { useState, useRef, useEffect } = React;
+
+/* ---- Status badge: colored dot + uppercase label ---- */
+function StatusBadge({ status }) {
+  return (
+    <span className={'status s-' + status}>
+      <span className="dot"></span>{STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/* ---- App bar ---- */
+function AppBar({ title, subtitle, actions, onLogout }) {
+  return (
+    <header className="appbar">
+      <div>
+        <div className="h1">{title}</div>
+        {subtitle && <div className="caption sub">{subtitle}</div>}
+      </div>
+      <div className="appbar-actions">
+        {actions}
+        {onLogout && <button className="icon-btn" onClick={onLogout} aria-label="Salir"><Icon name="logout" size={20} /></button>}
+      </div>
+    </header>
+  );
+}
+
+/* ---- Avatar ---- */
+function Avatar({ name, className = 'avatar' }) {
+  return <span className={className}>{initials(name).toUpperCase()}</span>;
+}
+
+/* ============================================================
+   Aseo card — expandable, status border, optional priority
+   ============================================================ */
+function AseoCard({ aseo, open, onToggle, onComplete, onReassign, role }) {
+  const a = aseoEnriched(aseo);
+  const cls = ['aseo-card', 's-' + a.status, a.priority ? 'priority' : '', open ? 'open' : ''].join(' ');
+  return (
+    <div className={cls}>
+      <div className="aseo-head" onClick={onToggle}>
+        <div className="aseo-main">
+          <div className="aseo-title-row">
+            {a.priority && <span className="prio-pill">Prioridad</span>}
+            <span className="aseo-name">{a.propNombre}</span>
+          </div>
+          <div className="aseo-dates">
+            <span className="aseo-checkout">Checkout {fmtDate(a.checkout)}</span>
+            <span className="aseo-meta">
+              Check-in {fmtShort(a.checkin)} · {a.noches} {a.noches === 1 ? 'noche' : 'noches'}
+            </span>
+          </div>
+          <div className="row gap-base" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+            <StatusBadge status={a.status} />
+            {role === 'admin' && (
+              <span className="assignee">
+                {a.asignada
+                  ? <><Avatar name={a.asignada} /> {a.asignada}</>
+                  : <span className="ter">Sin asignar</span>}
+              </span>
+            )}
+          </div>
+        </div>
+        <Icon name="chevron-down" size={20} className="aseo-chevron" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
+      </div>
+
+      {open && (
+        <div className="aseo-detail spacer">
+            <div className="detail-row">
+              <Icon name="location" size={16} />
+              <div className="keypair">
+                <span className="detail-label">Dirección</span>
+                <span className="detail-value">{a.direccion}</span>
+              </div>
+            </div>
+            <div className="detail-row">
+              <Icon name="key" size={16} />
+              <div className="keypair">
+                <span className="detail-label">Acceso</span>
+                <span className="detail-value">Lockbox {a.claves.lockbox} · {a.claves.porteria}</span>
+              </div>
+            </div>
+            {a.notas && (
+              <div className="detail-row">
+                <Icon name="notes" size={16} />
+                <div className="keypair">
+                  <span className="detail-label">Notas</span>
+                  <span className="detail-value">{a.notas}</span>
+                </div>
+              </div>
+            )}
+            {role === 'admin' && (
+              <div className="detail-row">
+                <Icon name="money" size={16} />
+                <div className="keypair">
+                  <span className="detail-label">Precio aseo</span>
+                  <span className="detail-value">{fmtCOP(a.precio)}</span>
+                </div>
+              </div>
+            )}
+
+            {a.status !== 'done' && (
+              <div className="aseo-actions">
+                {role === 'aseadora'
+                  ? <>
+                      <button className="btn btn-primary" onClick={() => onComplete(a)}>Completar</button>
+                      <button className="btn btn-secondary" onClick={() => onReassign && onReassign(a)}>Reasignar</button>
+                    </>
+                  : <>
+                      <button className="btn btn-primary" onClick={() => onReassign && onReassign(a)}>
+                        {a.asignada ? 'Reasignar' : 'Asignar'}
+                      </button>
+                      <button className="btn btn-secondary" onClick={() => onComplete(a)}>Completar</button>
+                    </>}
+              </div>
+            )}
+            {a.status === 'done' && a.completadoEl && (
+              <>
+                <div className="detail-row">
+                  <Icon name="check" size={16} style={{ color: 'var(--state-done)' }} />
+                  <span className="detail-value sec">Completado {fmtDate(a.completadoEl)}{a.tipo ? ' · ' + a.tipo : ''}</span>
+                </div>
+                {(a.entrada || a.salida) && (
+                  <div className="detail-row">
+                    <Icon name="clock" size={16} />
+                    <div className="keypair">
+                      <span className="detail-label">Horario</span>
+                      <span className="detail-value">{a.entrada || '—'} – {a.salida || '—'}</span>
+                    </div>
+                  </div>
+                )}
+                {(() => {
+                  const flags = flaggedAreas(a);
+                  if (!flags.length && (a.revision || a.funcionamiento)) {
+                    return <div className="ok-line"><Icon name="check" size={16} /> Todo en orden, sin novedades</div>;
+                  }
+                  if (!flags.length) return null;
+                  return (
+                    <div>
+                      <div className="detail-label" style={{ marginBottom: 6 }}>Requiere atención ({flags.length})</div>
+                      <div className="flag-box">
+                        {flags.map((f, i) => <div className="flag-item" key={i}><span className="dot"></span>{f}</div>)}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {a.reporte && (
+                  <div className="detail-row">
+                    <Icon name="alert" size={16} style={{ color: 'var(--state-pending)' }} />
+                    <div className="keypair">
+                      <span className="detail-label">Reporte</span>
+                      <span className="detail-value">{a.reporte}</span>
+                    </div>
+                  </div>
+                )}
+                {a.video && (
+                  <div className="detail-row">
+                    <Icon name="video" size={16} />
+                    <div className="keypair">
+                      <span className="detail-label">Soporte</span>
+                      <span className="detail-value">{a.video}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Compact card (calendar day list)
+   ============================================================ */
+function CompactCard({ aseo, onClick }) {
+  const a = aseoEnriched(aseo);
+  return (
+    <div className={'compact-card s-' + a.status} onClick={onClick}>
+      <div className="cc-main">
+        <div className="cc-name">{a.propNombre}</div>
+        <div className="caption">{a.asignada || 'Sin asignar'} · {a.noches} noches</div>
+      </div>
+      <StatusBadge status={a.status} />
+    </div>
+  );
+}
+
+/* ============================================================
+   Bottom navigation
+   ============================================================ */
+function BottomNav({ tabs, active, onChange }) {
+  return (
+    <nav className="bottomnav">
+      {tabs.map(t => (
+        <button key={t.id} className={'navtab' + (active === t.id ? ' active' : '')} onClick={() => onChange(t.id)}>
+          <Icon name={t.icon} size={22} />
+          <span className="navlabel">{t.label}</span>
+          {t.badge ? <span className="nav-badge">{t.badge}</span> : null}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/* ============================================================
+   Segmented control + checklist row (Completar wizard)
+   ============================================================ */
+function SegControl({ value, onChange, options }) {
+  // options: [{ key, label, state }]  state ∈ 'done'|'pending'|'neutral'
+  return (
+    <div className="seg">
+      {options.map(o => (
+        <button key={o.key} type="button"
+          className={'seg-opt' + (value === o.key ? ' on s-' + o.state : '')}
+          onClick={() => onChange(o.key)}>
+          <span className="seg-dot"></span>{o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CheckRow({ label, hint, value, onChange, options }) {
+  return (
+    <div className="checkrow">
+      <div className="q">{label}</div>
+      {hint && <div className="qhint">{hint}</div>}
+      <SegControl value={value} onChange={onChange} options={options} />
+    </div>
+  );
+}
+
+/* ============================================================
+   Bottom sheet
+   ============================================================ */
+function Sheet({ open, onClose, title, children, footer, height }) {
+  return (
+    <>
+      <div className={'overlay' + (open ? ' show' : '')} onClick={onClose}></div>
+      <div className={'sheet' + (open ? ' show' : '')} style={height ? { height } : null}>
+        <div className="sheet-handle"></div>
+        {title && (
+          <div className="sheet-head">
+            <div className="h2">{title}</div>
+            <button className="icon-btn" onClick={onClose} aria-label="Cerrar"><Icon name="close" size={20} /></button>
+          </div>
+        )}
+        <div className="sheet-body">{children}</div>
+        {footer && <div className="sheet-foot">{footer}</div>}
+      </div>
+    </>
+  );
+}
+
+Object.assign(window, { StatusBadge, AppBar, Avatar, AseoCard, CompactCard, BottomNav, Sheet, SegControl, CheckRow });
