@@ -1,132 +1,183 @@
 # Apps Script Reduction Plan
 
-Objetivo: que la dependencia de Google Apps Script baje de **crítica** a **opcional**, y eventualmente a **legacy/migración asistida**.
+Objetivo: que Apps Script sea **solo una capa fina de integración con Google Workspace**, no el centro del sistema.
 
-## Por qué reducirlo
+No-goal: cambiar lógica de negocio, workflows, modelo de datos, o features.
 
-Apps Script es perfecto para automatizar un solo spreadsheet. No es perfecto para:
+## Rol residual permitido para Apps Script
 
-1. **Despliegues frecuentes** — editar y "Deploy → Manage → Edit → New version → Deploy" no escala con CI/CD
-2. **Latencia** — cada `doPost` levanta un runtime nuevo; cold start 300-1500 ms
-3. **Concurrency** — `LockService` global por script: si dos aseadoras completan al mismo tiempo, una espera
-4. **Quotas** — 6 min/exec, 6h/día total, 30 ejecuciones simultáneas. En multi-tenant esto es un techo
-5. **Testing** — no hay forma sana de correr `Code.gs` localmente; debugging via `Logger.log` y refresh
-6. **Vendor lock-in** — todo el lógica de negocio vive dentro del editor de Google
+Apps Script SE QUEDA cuando:
 
-## Etapas
+1. **Trigger time-based con identidad del owner** — Sheets/Drive/Calendar requieren autorización en el contexto del usuario. Un cron externo necesitaría service account + OAuth flow complejo.
+2. **Google Calendar bridge** — `CalendarApp.getDefaultCalendar()` con guests usa la identidad del owner para mandar invitaciones. Replicarlo desde fuera requiere domain-wide delegation o OAuth user-impersonation, mucho más infra.
+3. **Drive resumable upload** — mientras Drive sea el storage, el resumable upload URL solo puede generarlo el script con OAuth del owner. La alternativa es hacer OAuth del usuario en el browser, pero eso cambia el flujo de aseadora.
+4. **Menú del Spreadsheet** (`onOpen`, helpers) — UI tools para Mike, no parte de la app.
+5. **Setup utilities one-shot** — `agregarAdmin`, `llenarTodo`, `fixSheetNames`, etc. Solo corren manualmente.
 
-### Etapa 0 — Ahora (junio 2026)
+Todo lo demás puede salir.
 
-Apps Script hace:
-- ✅ Web API (`doPost` con 18+ acciones)
-- ✅ iCal sync c/6h
-- ✅ Google Calendar sync c/2h
-- ✅ Auto-completar c/10pm
-- ✅ Drive uploads (resumable URL generator)
-- ✅ HubSpot webhook
-- ✅ Form responses reader
+## Fases de reducción
 
-Dependencia: **100% crítica**. Si Apps Script cae, la app no funciona.
+### Fase A — GitHub-first (esta sesión)
 
-### Etapa 1 — Auto-deploy desde GitHub (Sprint 0 del roadmap)
+**Cambio**: el código de Apps Script vive en GitHub. Deploys son automatizados. El editor del Apps Script se vuelve **read-only** desde el flujo de desarrollo.
 
-Cambio: copy-paste al editor desaparece.
+**No reduce líneas de código en Apps Script** — pero reduce el **dolor operativo** del 100% al 0% y el **bus factor** del código backend de 1 al número de colaboradores del repo.
 
-- `clasp push` y `clasp deploy` ejecutados por GitHub Action
-- Cambios al repo `main` → desplegados en <2 minutos sin intervención manual
-- Versiones taggeadas con el commit SHA para rollback rápido
+Ver `IMPLEMENTATION_ORDER.md` para los pasos concretos.
 
-Dependencia sigue siendo 100% pero el **dolor operativo** baja 90%.
+**Funciones afectadas**: ninguna lógicamente. Solo cambia donde se editan.
 
-### Etapa 2 — Frontend bundled, sin Babel-in-browser (Sprint 1)
+**Estado**: pendiente.
 
-No reduce Apps Script directamente. Hace al frontend independiente de la latencia de Apps Script en page load.
+---
 
-### Etapa 3 — Postgres dual-write (Sprint 3)
+### Fase B — Estructura por dominio (esta sesión, opcional)
 
-Apps Script escribe a sheets + postgres. Postgres queda como secondary.
+**Cambio**: `Code.gs` monolítico (~1046 líneas) se parte en archivos `00-config.gs`, `01-router.gs`, `10-auth.gs`, `20-aseos-read.gs`, `21-aseos-write.gs`, etc.
 
-Dependencia sigue 100% pero **tenemos backup** y **dashboard de divergencia**.
+**Beneficio**: cada archivo cabe en ~150 líneas. Onboarding más rápido. Reviews más fáciles. Cero cambios de lógica.
 
-### Etapa 4 — Frontend lee de Postgres (Sprint 4)
+**Funciones afectadas**: todas, físicamente. Lógica: ninguna.
 
-`getDatos`, `getAllAseos`, `getHistorial`, `getPropiedades`, `getPersonal` ya no son llamados por la app. Apps Script los mantiene en pie por compat pero los logs muestran 0 calls.
+**Estado**: pendiente.
 
-Dependencia baja a **escritura + sync** (~60%).
+---
 
-### Etapa 5 — Edge worker recibe escrituras (Sprint 5)
+### Fase C — Read endpoints fuera de Apps Script (futuro, no en esta sesión)
 
-`completarAseo`, `asignarAseo`, `moverAseo`, `agregarAseo`, CRUD propiedades, CRUD personal — todo migra a Cloudflare Worker.
+**Cambio**: las funciones de **solo lectura** se reescriben como un cliente directo del Google Sheets API REST, corriendo en cualquier runtime (Node en GitHub Pages no es viable; opciones: Cloudflare Worker, Vercel Function, AWS Lambda).
 
-Apps Script queda solo con:
-- iCal sync c/6h → escribe a Postgres
-- Google Calendar sync c/2h → lee de Postgres, escribe a Calendar
-- Auto-completar c/10pm → escribe a Postgres
-- Drive upload URL → mantener mientras storage siga en Drive
+**Endpoints candidatos** (clasificación MOVE-SOON del audit):
 
-Dependencia baja a **~25%** (solo crons + Drive).
+- `getDatos`
+- `getPersonal`
+- `getPropiedades`
+- `getAllAseos`
+- `getAseos`
+- `getHistorial`
+- `getFormRespuestas`
 
-### Etapa 6 — iCal sync en Worker cron (post Sprint 5)
+**Trade-off**:
+- Pro: latencia más baja, no consume quota de Apps Script, deploys aún más simples.
+- Contra: requiere un OAuth service account o API key del spreadsheet. Capa nueva de infra.
 
-Cloudflare Workers tiene cron triggers. Re-implementación de `sincronizarCalendarios` en TypeScript:
+**Estrategia**:
+1. Frontend mantiene 2 URLs: `GAS_URL` (legacy) y `READ_API_URL` (nueva).
+2. Feature flag `USE_NEW_READ_API` por endpoint.
+3. Verificar 1 semana de paridad de resultados antes de cutover por endpoint.
+4. Una vez 100% via nueva API por 30 días, borrar handlers en Apps Script.
 
-```typescript
-export default {
-  async scheduled(_event, env) {
-    const properties = await db.query.properties.findMany({ where: { active: true }});
-    for (const p of properties) {
-      if (!p.ical_url) continue;
-      const ical = await fetch(p.ical_url).then(r => r.text());
-      const reservations = parseICal(ical, p);
-      await upsertReservations(db, reservations);
-    }
-  }
-};
-```
+**Funciones afectadas**: 7 endpoints de lectura.
 
-Apps Script queda en: Google Calendar bridge + Drive uploads.
+**Estado**: futuro.
 
-Dependencia: **~10%**.
+---
 
-### Etapa 7 — Calendar bridge migrado (opcional)
+### Fase D — Write endpoints fuera de Apps Script (futuro)
 
-Si en algún momento queremos eliminar Apps Script por completo:
+**Cambio**: las mutaciones (con `LockService`) se reescriben usando Sheets API REST + locks externos (Redis si se necesita, o DB transactions si se migra a Postgres).
 
-- Google Calendar API directa desde el Worker (OAuth con service account o Workspace impersonation)
-- Drive uploads — migrar a R2/S3, deprecar resumable URL endpoint
+**Endpoints candidatos**:
 
-Dependencia: **0%**. Apps Script borrado del proyecto.
+- `completarAseo`
+- `asignarAseo`
+- `moverAseo`
+- `agregarAseo`
+- `agregarPropiedad`
+- `actualizarPropiedad`
+- `actualizarPersonal`
+- `registrarVideo`
 
-## Funciones que mueren (orden)
+**Trade-off**:
+- Pro: la API del backend deja de depender de Apps Script entirely.
+- Contra: necesitamos un sistema de locking externo. Bajo concurrency actual lo permite, pero hay que decidir entre Redis (más infra) o reintentos optimistas (más complejo).
 
-| Función | Etapa donde muere | Reemplazo |
+**Estrategia**:
+1. Reescribir cada endpoint en el nuevo backend con su lock equivalente.
+2. Dual-write durante 1 semana: cada mutación escribe a sheets dos veces (una via Apps Script, otra via nuevo backend) y se compara post-hoc.
+3. Cutover gradual con feature flag.
+
+**Funciones afectadas**: 8 endpoints de escritura.
+
+**Estado**: futuro.
+
+---
+
+### Fase E — Crons fuera de Apps Script (futuro)
+
+**Cambio**: los triggers time-based pasan a GitHub Actions cron o Cloudflare Worker cron.
+
+**Funciones candidatas**:
+
+- `sincronizarCalendarios` (cada 6h)
+- `sincronizarHojaAseos` (llamado al final de la anterior)
+- `autoCompletarAseosPasados` (10pm diario)
+
+**Funciones que NO pueden salir fácilmente** (necesitan owner identity):
+
+- `sincronizarGoogleCalendar` — usa `CalendarApp.getDefaultCalendar()` para mandar invitaciones como el owner. Replicar requiere service account con domain-wide delegation (workspace admin) o OAuth user flow.
+
+**Trade-off**:
+- Pro: independencia del quota de Apps Script (6 min/exec, 6h/día).
+- Contra: para Sheets API necesitamos service account con permisos al spreadsheet.
+
+**Funciones afectadas**: 3 triggers (de 4).
+
+**Estado**: futuro.
+
+---
+
+### Fase F — Drive bridge (futuro, opcional)
+
+**Cambio**: si en algún momento se migra storage a R2/S3, `handleGetUploadUrl` y `handleRegistrarVideo` se eliminan completamente.
+
+**Funciones afectadas**: 2 endpoints + `crearCarpetaPropiedad`, `actualizarFolderIdPropiedad`, `getCarpetaRaiz`.
+
+**Estado**: muy futuro. Mientras Drive funcione, no hay urgencia.
+
+---
+
+## Conteo proyectado de líneas de Apps Script por fase
+
+| Fase | Después | Reducción |
 |---|---|---|
-| `getDatos`, `getPersonal`, `getPropiedades`, `getAllAseos` | 4 | Worker GET endpoints |
-| `getHistorial` | 4 | Worker GET endpoint |
-| `completarAseo`, `asignarAseo`, `moverAseo`, `agregarAseo` | 5 | Worker POST endpoints |
-| `actualizarPersonal`, `actualizarPropiedad`, `agregarPropiedad` | 5 | Worker POST endpoints |
-| `getUploadUrl`, `registrarVideo` | 5 (con Drive) o 7 (con R2) | Worker + signed URLs |
-| `sincronizarCalendarios`, `sincronizarHojaAseos` | 6 | Worker cron + Postgres |
-| `autoCompletarAseosPasados` | 6 | Worker cron |
-| `notificarHubspot` | 6 | Worker fetch directo |
-| `sincronizarGoogleCalendar` | 7 (opcional) | Worker + Google Calendar API |
-| `crearHojaPropiedades`, `crearHojaAseos`, `crearHojaPersonal`, `agregarAdmin`, `limpiarHojasDuplicadas` | siempre vivas | utilidades de setup, no críticas |
-| `onOpen` (menú spreadsheet) | siempre viva | nadie le hace daño |
+| Hoy | ~1526 (Code.gs + Sync.gs) | 0% |
+| A — GitHub-first | ~1526 | 0% (cero cambio de líneas, 100% cambio operativo) |
+| B — Split por dominio | ~1526 (en 12+ archivos) | 0% |
+| C — Read endpoints fuera | ~1100 | -28% |
+| D — Write endpoints fuera | ~600 | -60% |
+| E — Crons fuera (excepto Calendar bridge) | ~350 | -77% |
+| F — Drive bridge eliminado | ~200 | -87% |
 
-## Backwards compatibility durante la migración
+Estado final (~200 líneas): `onOpen`, `sincronizarGoogleCalendar`, helpers, setup one-shots. Apps Script es legítimamente Workspace-only.
 
-Cada etapa **NO** rompe lo anterior. Estrategia:
+## Funciones que sobreviven hasta el final
 
-1. Worker exponen endpoint nuevo `/api/v1/...`
-2. Apps Script mantiene `doPost` legacy intacto
-3. Frontend tiene flag `USE_WORKER_API` por endpoint
-4. Una vez 100% de tráfico via Worker durante 1 semana sin issues, se borra el handler de Apps Script
+| Función | Por qué se queda |
+|---|---|
+| `onOpen` | Menú del Sheet |
+| `sincronizarGoogleCalendar` | Owner identity para invitar a aseadoras |
+| `agregarAdmin`, `crearTriggersAutomaticos`, `llenarTodo`, `fixSheetNames`, `limpiarHojasDuplicadas`, `debugSheets`, `getSpreadsheetId` | Setup utilities |
+| `getSS`, `CONFIG`, fecha utils | Helpers de los anteriores |
 
-## Métricas para validar cada etapa
+Total: ~10 funciones esenciales.
 
-- Llamadas a `doPost` por acción / día (Apps Script execution log)
-- Errors por acción
-- Latencia p50/p95 por acción
-- Costo de Cloudflare Workers (target: $0 hasta 100k req/día)
+## Métricas para validar el progreso
 
-Dashboard sugerido: Cloudflare Analytics + un cron Worker que escribe a una tabla `api_metrics` en Postgres.
+1. **Líneas de código en Apps Script**: tracked por commit
+2. **Calls al `doPost` Apps Script** / día (logs del editor): debería caer monotónicamente
+3. **Latencia p95 por endpoint**: debería bajar después de Fase C
+4. **Bus factor del backend de código**: medido por accesos al repo (target: 2+)
+5. **Bus factor de runtime**: medido por dependencia de la cuenta del owner (target final: solo Calendar y setup)
+
+## No-progreso aceptable
+
+Es OK quedarse en Fase A+B para siempre. Eso ya cumple:
+
+- ✅ GitHub es el centro
+- ✅ Deploys automatizados
+- ✅ Apps Script es mantenible y versionado
+- ✅ Cero dependencia del editor para cambios
+
+Fases C-F son optimizaciones. No son requisitos para considerar el sistema "moderno".
