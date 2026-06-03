@@ -48,7 +48,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
             <span className="aseo-name">{a.propNombre}</span>
           </div>
           <div className="aseo-dates">
-            <span className="aseo-checkout">Checkout {fmtDate(a.checkout)}</span>
+            <span className="aseo-checkout">Fecha de aseo {fmtDate(a.checkout).replace(/(\d+)\s+(\w+)$/, '$1 de $2')}</span>
             <span className="aseo-meta">
               Check-in {fmtShort(a.checkin)} · {a.noches} {a.noches === 1 ? 'noche' : 'noches'}
             </span>
