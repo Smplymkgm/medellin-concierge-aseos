@@ -68,7 +68,8 @@ function AseosScreen({ ctx }) {
             {g.items.map(a => (
               <AseoCard key={a.codigo} aseo={a} role="admin"
                 open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
-                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+                onComplete={ctx.openCompletar} onReassign={ctx.openReassign}
+                onFinalizarSinForm={ctx.doFinalizarSinForm} />
             ))}
           </div>
         ))}
