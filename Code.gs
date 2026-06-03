@@ -1264,7 +1264,10 @@ function runSelfTest() {
     var hoja = getSS().getSheetByName(CONFIG.hojaAseos);
     if (!hoja) throw new Error("no existe");
     var cols = hoja.getLastColumn();
-    return "rows=" + hoja.getLastRow() + " cols=" + cols + (cols >= 20 ? " (form cols OK)" : " (faltan cols 14-20 del form)");
+    // Cols 14-20 se crean lazy al primer completarAseo via
+    // ensureAseosFormColumns(). No es error si aún no existen.
+    var formInfo = cols >= 20 ? "form OK" : "form cols se crearán al 1er completar";
+    return "rows=" + hoja.getLastRow() + " cols=" + cols + " (" + formInfo + ")";
   });
 
   check("Hoja Maestra", function() {
@@ -1298,9 +1301,12 @@ function runSelfTest() {
       return /^[^A-Za-z0-9]/.test(s.getName());
     });
     if (corruptas.length) {
-      throw new Error("encontradas: " + corruptas.map(function(s){return s.getName();}).join(", "));
+      // Sugerencia accionable, no exception fatal
+      throw new Error("encontradas " + corruptas.length + ": " +
+        corruptas.map(function(s){return s.getName();}).join(", ") +
+        ". Corre: Menú → Limpiar hojas duplicadas con emojis");
     }
-    return "n=" + sheets.length;
+    return "n=" + sheets.length + " (todas limpias)";
   });
 
   check("Triggers programados existen", function() {
