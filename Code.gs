@@ -136,7 +136,7 @@ function doPost(e) {
       var n2 = body.nombre || '';
       var r2 = body.rol || 'aseadora';
       var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'' }; });
-      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso }; });
+      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null }; });
       var a2 = r2==='admin' ? getAllAseos() : getAseosPorAseadora(n2);
       return respond(true, { personal: p2, propiedades: pr2, aseos: a2 });
     }
@@ -790,7 +790,7 @@ function getPropiedades() {
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var lastCol = Math.max(hoja.getLastColumn(), 7);
+  var lastCol = Math.max(hoja.getLastColumn(), 8);
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
   var props = [];
   for (var i = 0; i < datos.length; i++) {
@@ -799,14 +799,20 @@ function getPropiedades() {
     var nom = String(r[1]).trim();
     var url = String(r[4] || "").trim();
     if (!id || !nom) continue;
+    var accesoStructRaw = String(r[7] || "").trim();
+    var accesoStruct = null;
+    if (accesoStructRaw && accesoStructRaw.charAt(0) === "{") {
+      try { accesoStruct = JSON.parse(accesoStructRaw); } catch(e) {}
+    }
     props.push({
-      id:            id,
-      nombre:        nom,
-      precioAseo:    Number(r[2]) || 0,
-      acceso:        String(r[3] || "").trim(),
-      icalUrl:       url,
-      empleadaAuto:  String(r[5] || "").trim(),
-      folderId:      String(r[6] || "").trim(),
+      id:                  id,
+      nombre:              nom,
+      precioAseo:          Number(r[2]) || 0,
+      acceso:              String(r[3] || "").trim(),
+      icalUrl:             url,
+      empleadaAuto:        String(r[5] || "").trim(),
+      folderId:            String(r[6] || "").trim(),
+      accesoEstructurado:  accesoStruct,
     });
   }
   return props;
@@ -861,15 +867,27 @@ function handleActualizarPropiedad(body) {
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
-  var existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  // Asegurar columna H "Acceso estructurado"
+  if (hoja.getLastColumn() < 8) {
+    hoja.getRange(1, 8).setValue("Acceso Estructurado (JSON)")
+      .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
+    hoja.setColumnWidth(8, 280);
+  }
+
+  var existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 8).getValues();
   for (var i = 0; i < existentes.length; i++) {
     if (String(existentes[i][0]).trim() !== id) continue;
     var fila = i + 2;
-    if (datos.nombre      !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
-    if (datos.precioAseo  !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
-    if (datos.acceso      !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
-    if (datos.icalUrl     !== undefined) hoja.getRange(fila, 5).setValue(datos.icalUrl);
-    if (datos.empleadaAuto !== undefined) hoja.getRange(fila, 6).setValue(datos.empleadaAuto);
+    if (datos.nombre               !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
+    if (datos.precioAseo           !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
+    if (datos.acceso               !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
+    if (datos.icalUrl              !== undefined) hoja.getRange(fila, 5).setValue(datos.icalUrl);
+    if (datos.empleadaAuto         !== undefined) hoja.getRange(fila, 6).setValue(datos.empleadaAuto);
+    if (datos.accesoEstructurado   !== undefined) {
+      var val = datos.accesoEstructurado;
+      if (val && typeof val === "object") val = JSON.stringify(val);
+      hoja.getRange(fila, 8).setValue(String(val || ""));
+    }
     return respond(true, null);
   }
   return respond(false, null, "Propiedad no encontrada: " + id);
@@ -1441,13 +1459,19 @@ function getAllAseos() {
   var ss = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var lastRow = hoja.getLastRow();
+  // Leer hasta col 15 (Salida) si existen, para devolver formFilled
+  var lastCol = hoja.getLastColumn();
+  var maxCol = Math.min(lastCol, 15);
+  var datos = hoja.getRange(2, 1, lastRow - 1, maxCol).getValues();
+  var disp  = hoja.getRange(2, 4, lastRow - 1, 2).getDisplayValues();
   var result = [];
   for (var i = 0; i < datos.length; i++) {
     var r = datos[i];
     var cod = String(r[0]);
     if (!cod) continue;
+    var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
+    var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
     result.push({
       codigo:    cod,
       idProp:    String(r[1]).trim(),
@@ -1460,6 +1484,9 @@ function getAllAseos() {
       precio:    Number(r[8]) || 0,
       notas:     String(r[9] || ""),
       acceso:    String(r[10] || ""),
+      entrada:   entrada,
+      salida:    salida,
+      formFilled: !!(entrada || salida),
     });
   }
   return result;

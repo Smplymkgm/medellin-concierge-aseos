@@ -125,20 +125,67 @@ function PropiedadDetail({ ctx, propId }) {
           <span className="body sec">{p.direccion}</span>
         </div>
 
-        <div className="section">
-          <div className="section-title">
-            <Icon name="key" size={16} />
-            <span className="h3">Claves de acceso</span>
-            <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setReveal(!reveal)} aria-label="Mostrar claves">
-              <Icon name={reveal ? 'eye-off' : 'eye'} size={20} />
-            </button>
-          </div>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '4px 16px' }}>
-            <div className="key-row"><span className="caption">Lockbox</span><span className={'key-val' + (reveal ? '' : ' hidden')}>{reveal ? p.claves.lockbox : mask(p.claves.lockbox)}</span></div>
-            <div className="key-row"><span className="caption">WiFi</span><span className={'key-val' + (reveal ? '' : ' hidden')}>{reveal ? p.claves.wifi : mask(p.claves.wifi)}</span></div>
-            <div className="key-row"><span className="caption">Portería</span><span className="key-val">{p.claves.porteria}</span></div>
-          </div>
-        </div>
+        {(() => {
+          const tipoLabels = {
+            chapa_digital: 'Chapa digital',
+            llave_fisica:  'Llave física',
+            caja_llaves:   'Caja de llaves',
+          };
+          const struct = p.accesoEstructurado || {};
+          const ext = struct.externo;
+          const intn = struct.interno;
+          const hayStruct = (ext && (ext.tipo || ext.valor)) || (intn && (intn.tipo || intn.valor)) || struct.notas;
+          if (hayStruct) {
+            return (
+              <div className="section">
+                <div className="section-title">
+                  <Icon name="key" size={16} />
+                  <span className="h3">Acceso</span>
+                  <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setReveal(!reveal)} aria-label="Mostrar/ocultar claves">
+                    <Icon name={reveal ? 'eye-off' : 'eye'} size={20} />
+                  </button>
+                </div>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '4px 16px' }}>
+                  {ext && (ext.tipo || ext.valor) && (
+                    <div className="key-row">
+                      <span className="caption">Externo · {tipoLabels[ext.tipo] || ext.tipo || '—'}</span>
+                      <span className={'key-val' + (reveal ? '' : ' hidden')}>{reveal ? (ext.valor || '—') : mask(ext.valor || '')}</span>
+                    </div>
+                  )}
+                  {intn && (intn.tipo || intn.valor) && (
+                    <div className="key-row">
+                      <span className="caption">Interno · {tipoLabels[intn.tipo] || intn.tipo || '—'}</span>
+                      <span className={'key-val' + (reveal ? '' : ' hidden')}>{reveal ? (intn.valor || '—') : mask(intn.valor || '')}</span>
+                    </div>
+                  )}
+                  {struct.notas && (
+                    <div className="key-row">
+                      <span className="caption">Notas</span>
+                      <span className="key-val">{struct.notas}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          // Fallback: mostrar el texto libre del spreadsheet partido por |
+          const accesoStr = (p.claves && p.claves.acceso) || '';
+          const parts = accesoStr.split('|').map(s => s.trim()).filter(Boolean);
+          if (parts.length === 0) return null;
+          return (
+            <div className="section">
+              <div className="section-title"><Icon name="key" size={16} /><span className="h3">Acceso</span></div>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '4px 16px' }}>
+                {parts.map((part, i) => (
+                  <div className="key-row" key={i}>
+                    <span className="key-val" style={{ fontSize: 13 }}>{part}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="caption" style={{ marginTop: 6, color: 'var(--text-tertiary)' }}>Toca Editar para estructurar el acceso en tipo + clave</div>
+            </div>
+          );
+        })()}
 
         <div className="section">
           <div className="section-title"><Icon name="money" size={16} /><span className="h3">Precio aseo</span></div>
