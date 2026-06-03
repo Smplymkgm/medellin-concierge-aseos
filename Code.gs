@@ -1,25 +1,17 @@
+var SPREADSHEET_ID = "1iKbcU8lcr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q";
+function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
+
 // ============================================================
 // CONFIGURACIÓN
 // ============================================================
 
-var SPREADSHEET_ID = '1iKbcU8lcr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q';
-function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
-
-const CONFIG = {
-  empleadas: [
-    { nombre: "Ana",      email: "ayarsakarina@gmail.com" },
-    { nombre: "Fernanda", email: "" },
-    { nombre: "Claudia",  email: "Cpatriciamonterrozalopez@gmail.com" },
-  ],
-  pines: {
-    "Ana":      "1234",
-    "Fernanda": "5678",
-    "Claudia":  "9012",
-  },
-  hojaMaestra:     "📋 Todas las Reservas",
-  hojaAseos:       "🧹 Todos los Aseos",
-  hojaPropiedades: "⚙️ Propiedades",
-  hojaPersonal:     "👩 Personal",
+var CONFIG = {
+  hojaMaestra:    "Todas las Reservas",
+  hojaAseos:       "Todos los Aseos",
+  hojaPropiedades: "Propiedades",
+  hojaPersonal:    "Personal",
+  hojaVideos:      "Videos Aseos",
+  carpetaRaiz:     "Medellin Concierge - Videos Aseos",
   meses: ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
           "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
 };
@@ -66,149 +58,128 @@ function getMesAnio(fechaStr) {
 }
 
 function nombreDia(fecha) {
-  return ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][fecha.getDay()];
+  return ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"][fecha.getDay()];
+}
+
+function hoyStr() {
+  return formatearFecha(new Date());
 }
 
 // ============================================================
-// TEST DE FECHAS
+// RESPONSE HELPER
 // ============================================================
 
-function testFechas() {
-  Logger.log("=== TEST FECHAS ===");
-  var d1 = new Date(2026, 4, 2);
-  var r1 = fechaToStr(d1);
-  Logger.log("Test 1 - Date(2026,4,2) → " + r1 + " | " + (r1 === "02/05/2026" ? "✅ OK" : "❌ FALLO"));
-  var r2 = fechaToStr("02/05/2026");
-  Logger.log("Test 2 - '02/05/2026' → " + r2 + " | " + (r2 === "02/05/2026" ? "✅ OK" : "❌ FALLO"));
-  var d3 = fechaADate("02/05/2026");
-  Logger.log("Test 3 - fechaADate OK: " + (d3 && d3.getDate()===2 && d3.getMonth()===4 ? "✅" : "❌"));
-  Logger.log("=== FIN TESTS ===");
+function respond(ok, data, error) {
+  var payload = { ok: ok };
+  if (data !== null && data !== undefined) payload.data = data;
+  if (error) payload.error = String(error);
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // ============================================================
-// PROPIEDADES
+// ROUTER — doPost
 // ============================================================
 
-function getPropiedades() {
-  const ss   = getSS();
-  let   hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
-  if (!hoja) hoja = crearHojaPropiedades();
-  if (hoja.getLastRow() < 2) return [];
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 6).getValues();
-  const props = [];
-  for (const r of datos) {
-    const id  = String(r[0]).trim();
-    const nom = String(r[1]).trim();
-    const url = String(r[4]).trim();
-    if (!id || !nom || !url) continue;
-    props.push({
-      id, nombre: nom,
-      precioAseoInterno: Number(r[2]) || 0,
-      acceso:       String(r[3] || "").trim(),
-      icalUrl:      url,
-      empleadaAuto: String(r[5] || "").trim(),
-    });
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var action = body.action;
+
+    if (action === "login")               return handleLogin(body);
+    if (action === "getAseos")            return handleGetAseos(body);
+    if (action === "completarAseo")       return handleCompletarAseo(body);
+    if (action === "completar")           return handleCompletarAseo(body); // alias usado por la app
+    if (action === "getAllAseos")          return handleGetAllAseos(body);
+    if (action === "asignarAseo")         return handleAsignarAseo(body);
+    if (action === "moverAseo")           return handleMoverAseo(body);
+    if (action === "getPropiedades")      return handleGetPropiedades(body);
+    if (action === "agregarPropiedad")    return handleAgregarPropiedad(body);
+    if (action === "actualizarPropiedad") return handleActualizarPropiedad(body);
+    if (action === "getPersonal")         return handleGetPersonal(body);
+    if (action === "actualizarPersonal")  return handleActualizarPersonal(body);
+    if (action === "getUploadUrl")        return handleGetUploadUrl(body);
+    if (action === "registrarVideo")      return handleRegistrarVideo(body);
+    if (action === "agregarAseo")         return handleAgregarAseo(body);
+    if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
+    if (action === "getHistorial")        return handleGetHistorial(body);
+
+    if (action === "debug") {
+      var ss2 = getSS();
+      var sheets2 = ss2 ? ss2.getSheets().map(function(h){return h.getName();}) : [];
+      var h2 = ss2 ? ss2.getSheetByName(CONFIG.hojaPersonal) : null;
+      var rows2 = h2 ? h2.getLastRow() : -1;
+      var row0 = (h2 && rows2 > 1) ? h2.getRange(2,1,1,4).getValues()[0] : [];
+      return respond(true, {sheets: sheets2, personalRows: rows2, row0: row0, ssId: ss2 ? ss2.getId() : 'null'});
+    }
+    if (action === 'getDatos') {
+      var n2 = body.nombre || '';
+      var r2 = body.rol || 'aseadora';
+      var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'' }; });
+      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso }; });
+      var a2 = r2==='admin' ? getAllAseos() : getAseosPorAseadora(n2);
+      return respond(true, { personal: p2, propiedades: pr2, aseos: a2 });
+    }
+
+    return respond(false, null, "Accion desconocida: " + action);
+  } catch(err) {
+    Logger.log("doPost error: " + err.message + "\n" + err.stack);
+    return respond(false, null, err.message);
   }
-  return props;
 }
 
-function crearHojaPropiedades() {
-  const ss  = getSS();
-  const ex  = ss.getSheetByName(CONFIG.hojaPropiedades);
-  if (ex) ss.deleteSheet(ex);
-  const hoja = ss.insertSheet(CONFIG.hojaPropiedades);
-  const enc = ["ID","Nombre Propiedad","Precio Aseo","Acceso (claves y dirección)","iCal URL","Empleada Auto"];
-  hoja.getRange(1,1,1,enc.length).setValues([enc])
-    .setBackground("#1a1a2e").setFontColor("#ffffff")
-    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
-  [80,260,110,420,420,130].forEach((w,i)=>hoja.setColumnWidth(i+1,w));
-  hoja.setFrozenRows(1);
-  hoja.getRange("F2:F500").setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(["", ...CONFIG.empleadas.map(e=>e.nombre)], true)
-      .setAllowInvalid(false).build()
-  );
-  const props = [
-    ["#0065","Cozy, Convenient and Affordable Loft In Laureles",80000,"Clave edificio: 111222 | Clave apto: 664433# | Dirección: calle 42 # 73-96 apto 301A","https://www.airbnb.com/calendar/ical/1059844517249923111.ics?t=0a8e9eb6a7cf4d93ba3b53c98b9b9109",""],
-    ["#0002","Luxury 3 Bedroom Apartment in Provenza",130000,"Clave apto: Actualizar | Dirección: Cl. 13 #34-31, apto 1001","https://www.airbnb.com/calendar/ical/1110818240758059750.ics?t=de70843dd2b64418bb1a0bf0e2f4b982",""],
-    ["#0091","New Industrial Loft in Laureles | Stadium & Metro",70000,"Clave edificio: 662233# | Clave apto: 5501# | Dirección: Crr 68 # 48-25 edificio monte Ignacio apto 501","https://www.airbnb.com/calendar/ical/1067594374376114880.ics?t=3d2dc20bf0d54d5eb0dcf62476ba6279",""],
-    ["#0089","Ayamonte 306",150000,"Clave puerta exterior: 3589 | Clave apto 306A: 555222 | Clave apto 306B: 475869 | Dirección: Cra. 32d #7A 13, Apto 306","https://www.airbnb.com/calendar/ical/1576419134141027115.ics?t=853c7ce3086343778b19be3b818bb604",""],
-    ["#0087","Ayamonte 306 2BR",100000,"Clave puerta exterior: 3589 | Clave apto 306A: 555222 | Dirección: Cra. 32d #7A 13, Apto 306","https://www.airbnb.com/calendar/ical/1569669692558214891.ics?t=85dd1b98ba4c4e27b61feb394f107df2",""],
-    ["#0088","Ayamonte 306 Loft",60000,"Clave puerta exterior: 3589 | Clave apto 306B: 475869 | Dirección: Cra. 32d #7A 13, Apto 306","https://www.airbnb.com/calendar/ical/1568369073998107926.ics?t=2a78bb5a0a454a36b7105ff7ccd5fb28",""],
-    ["#0100","Bosques de La Concha 9914",10000,"Clave Caja de llaves: 3443 | Dirección: Cl 10 #30-210 Bosques de la concha Apto 9914","https://www.airbnb.com/calendar/ical/1634755529814954764.ics?t=38bc4c9f949c4558a2017564ef090349",""],
-    ["#0075","Central/Moderno Apt en Envigado | Kardinal 902",0,"","https://www.airbnb.com/calendar/ical/1458107014614722402.ics?t=4f926bbbce4249ada0682fb89f22a4b0",""],
-    ["#0082","Edficio Doña Emilia 302",120000,"Solicitarnos las llaves | Clave apto: 7116 | Dirección: CIR 3 #68-10 apto 302","https://www.airbnb.com/calendar/ical/1544348525770961839.ics?t=e24fd62036c746aba9668a8b2eaa5ba0",""],
-    ["#0086","Kardinal42 604",90000,"Clave apto: Solicitar | Dirección: CRA 42B # 25 sur 125 apto 604","https://www.airbnb.com/calendar/ical/1567644876777215413.ics?t=6c2a596d1e6c4e50bcd8cac76dfc3466",""],
-    ["#0098","Laureles House | Cerca al metro",200000,"Clave entrada: 475869 | Clave Suites: Solicitar | Dirección: Crr 78B # 49A-14 Suites 1,2,3,4 y 5","https://www.airbnb.com/calendar/ical/1616091455178092939.ics?t=8dd396813bc94d9495531bc62f06da8b",""],
-    ["#0081","Luxury Apartment in Envigado",140000,"Solicitar llaves | Dirección: Cl. 37 Sur #27 90, Torre 5 Apto 1533","https://www.airbnb.com/calendar/ical/1537776165136147369.ics?t=e2aa37242b30489ca42cd757b75c5cca",""],
-    ["#0083","Manila Luxury Suites 201",90000,"Clave edificio: 2026401 | Clave caja de llaves: 4530 | Dirección: Cll 12 # 43D-109 suit 201","https://www.airbnb.com/calendar/ical/1573104471376137291.ics?t=9dbaec3e7ebd4fa0bced6398d114efb6",""],
-    ["#0084","Manila Luxury Suites 301",90000,"Clave edificio: 2026401 | Clave caja de llaves: 5687 | Dirección: Cll 12 # 43D-109 suit 301","https://www.airbnb.com/calendar/ical/1557512405304706776.ics?t=9673882925af449c90a158ef2e5b29ea",""],
-    ["#0085","Manila Luxury Suites 401",70000,"Clave edificio: 2026401 | Clave caja de llaves: 4530 | Dirección: Cll 12 # 43D-109 suit 401","https://www.airbnb.com/calendar/ical/1557148641859181965.ics?t=af7d0ebf34f6420e94538c9c7386cee4",""],
-    ["#0076","Modern 1BR Apartment in Envigado Kardinal 1607 1H",0,"","https://www.airbnb.com/calendar/ical/1511952193532990951.ics?t=79b74209c2c847228915d9fe75ef716f",""],
-    ["#0092","2H Apto Moderno en Laureles | Estadio y Metro",90000,"Clave edificio: 662233# | Clave apto: 0052# | Dirección: Cra 68 # 48-25 edificio Monte Ignacio apto 502","https://www.airbnb.com/calendar/ical/1067646316774826374.ics?t=0903b84c6a7c45d4a2bb5cfacc569c83",""],
-    ["#0010","Stunning 1 BR Condo in Poblado",90000,"Clave apto: 000 406 | Dirección: Cl. 12 #43e-22 apto 406","https://www.airbnb.com/calendar/ical/568188404839333166.ics?t=b6deb629453144cbb7aa45b4775aa9d6",""],
-    ["#0097","Suite Moderna en Laureles | 05",50000,"Clave edificio: 475869# | Clave apto: 224599# | Dirección: Crr 78B # 49A-14 suite 5","https://www.airbnb.com/calendar/ical/1600970293208740761.ics?t=6693e82b79c24b608433012a864f4b34",""],
-    ["#0093","Suite Moderna en Laureles | 01",60000,"Clave edificio: 475869# | Clave apto: 552266# | Dirección: Crr 78B # 49A-14 suite 1","https://www.airbnb.com/calendar/ical/1600861844443976595.ics?t=18b585c48a134de8a8c5285275c24731",""],
-    ["#0094","Suite Moderna en Laureles | 02",60000,"Clave edificio: 475869# | Clave apto: 556699# | Dirección: Crr 78B # 49A-14 suite 2","https://www.airbnb.com/calendar/ical/1600900771290899356.ics?t=c6394d64f3064c18b6ffb1aea70516f4",""],
-    ["#0095","Suite Moderna en Laureles | 03",60000,"Clave edificio: 475869# | Clave apto: 2580 | Dirección: Crr 78B # 49A-14 suite 3","https://www.airbnb.com/calendar/ical/1600950183602316625.ics?t=df0a27a25a2f4085952022ce544232ee",""],
-    ["#0096","Suite Moderna en Laureles | 04",50000,"Clave edificio: 475869# | Clave apto: 558899# | Dirección: Crr 78B # 49A-14 suite 4","https://www.airbnb.com/calendar/ical/1640549319042180349.ics?t=8acf02fa61cf4418bb676d4d7b24a2fa",""],
-    ["#0076b","Top Floor Industrial 2BR Envigado 1607",0,"","https://www.airbnb.com/calendar/ical/1458239945601966285.ics?t=892a1efa00024704bdbc476f41a2578e",""],
-    ["#0001","Trendy Provenza Studio",100000,"Clave apto: 147258369# | Dirección: Cra. 35 #10b-119","https://www.airbnb.com/calendar/ical/1242776299677839065.ics?t=66878d766a5a4918a6ac290bfc7dbc8f",""],
-    ["#0078","Ayamonte 403",90000,"Llaves en porteria | Dirección: Cra 32d #7A-13 Apto 403","https://www.airbnb.com/calendar/ical/1645931515024951567.ics?t=8c2339a74fa644f4a29d62b60444c764",""],
-  ];
-  hoja.getRange(2,1,props.length,6).setValues(props);
-  for (let i=0;i<props.length;i++) {
-    hoja.getRange(i+2,1,1,6).setBackground(i%2===0?"#f8f9fa":"#ffffff")
-      .setFontFamily("Arial").setFontSize(10);
+// doGet kept for health-check
+function doGet(e) {
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, version: "2.1", fecha: hoyStr() }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+function handleLogin(body) {
+  var nombre = String(body.nombre || "").trim();
+  var pin    = String(body.pin    || "").trim();
+  if (!nombre || !pin) return respond(false, null, "Nombre y PIN requeridos");
+
+  var personal = getPersonal();
+  var usuario  = null;
+  for (var i = 0; i < personal.length; i++) {
+    if (personal[i].nombre.toLowerCase() === nombre.toLowerCase()) {
+      usuario = personal[i]; break;
+    }
   }
-  hoja.getRange(2,3,props.length,1).setNumberFormat("$#,##0");
-  getSS().toast("✅ Hoja Propiedades creada.", "Propiedades", 6);
-  return hoja;
+  if (!usuario) return respond(false, null, "Usuario no encontrado");
+  if (usuario.pin !== pin) return respond(false, null, "PIN incorrecto");
+
+  var rol = nombre.toLowerCase() === "admin" ? "admin" : "aseadora";
+  return respond(true, { rol: rol, nombre: usuario.nombre });
 }
 
 // ============================================================
-// MENÚ
-// ============================================================
-
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu("🏠 Airbnb Manager")
-    .addItem("🔄 Sincronizar Airbnb",                     "sincronizarCalendarios")
-    .addItem("📅 Sincronizar Google Calendar",             "sincronizarGoogleCalendar")
-    .addItem("📨 Reenviar invitación (fila seleccionada)", "reenviarInvitacionSeleccionada")
-    .addSeparator()
-    .addItem("➕ Agregar Aseo Manual",                    "agregarAseoManual")
-    .addSeparator()
-    .addItem("🧹 Crear/verificar hoja Todos los Aseos",   "crearHojaAseos")
-    .addItem("🏠 Recrear hoja Propiedades",               "crearHojaPropiedades")
-    .addSeparator()
-    .addItem("🧪 Test fechas",                "testFechas")
-    .addSeparator()
-    .addItem("⚙️ Crear triggers automáticos", "crearTriggersAutomaticos")
-    .addToUi();
-}
-
-
-// ============================================================
-// LEER HOJA PERSONAL
+// LEER PERSONAL
 // ============================================================
 
 function getPersonal() {
-  const ss   = getSS();
-  const hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
-  const result = [];
-  for (const r of datos) {
-    const activa = r[0] === true || r[0] === "TRUE" || r[0] === "true";
-    const nombre = String(r[1] || "").trim();
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  var result = [];
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    var activa = r[0] === true || r[0] === "TRUE" || r[0] === "true";
+    var nombre = String(r[1] || "").trim();
     if (!activa || !nombre) continue;
     result.push({
-      nombre,
+      nombre:     nombre,
       pin:        String(r[2] || "").trim(),
       email:      String(r[3] || "").trim(),
       formulario: String(r[4] || "").trim(),
-      calendario: String(r[5] || "").trim(),
+      carpeta:    String(r[5] || "").trim(),
       telefono:   String(r[6] || "").trim(),
     });
   }
@@ -216,190 +187,818 @@ function getPersonal() {
 }
 
 // ============================================================
-// WEB APP
+// ASEADORA — getAseos
 // ============================================================
 
-function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile("Index")
-    .setTitle("Mis Aseos")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
+function handleGetAseos(body) {
+  var nombre = String(body.nombre || "").trim();
+  if (!nombre) return respond(false, null, "Nombre requerido");
 
-function loginAseadora(nombre, pin) {
-  if (!nombre || !pin) return false;
-  nombre = String(nombre).trim().toLowerCase();
-  pin    = String(pin).trim();
-  const personal = getPersonal();
-  const usuario  = personal.find(p => p.nombre.toLowerCase() === nombre);
-  if (!usuario) return false;
-  return usuario.pin === pin;
-}
-
-// ============================================================
-// DATOS PARA LA APP (lee de "🧹 Todos los Aseos")
-// ============================================================
-
-
-function getPersonalParaApp() {
-  return getPersonal().map(p => ({ nombre: p.nombre, formulario: p.formulario }));
-}
-
-function getDatosAseadora(nombre) {
-  const ss   = getSS();
-  const hoja = ss.getSheetByName(CONFIG.hojaAseos);
-
-  const proximos  = []; // checkout >= hoy, no cancelados
-  const historial = []; // checkout < hoy, todos los estados
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  var proximos  = [];
+  var historial = [];
 
   if (hoja && hoja.getLastRow() >= 2) {
-    const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-    const disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
-    const hoy   = new Date(); hoy.setHours(0,0,0,0);
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+    var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+    var hoy   = new Date(); hoy.setHours(0,0,0,0);
 
-    for (let i = 0; i < datos.length; i++) {
-      const r = datos[i];
-      if (String(r[6]) !== nombre) continue;
+    for (var i = 0; i < datos.length; i++) {
+      var r = datos[i];
+      if (String(r[6]).trim() !== nombre) continue;
 
-      const checkinStr  = disp[i][0] || fechaToStr(r[3]);
-      const checkoutStr = disp[i][1] || fechaToStr(r[4]);
-      const estado      = String(r[7] || "");
-      const precio      = Number(r[8]) || 0;
-      const accesoRaw   = String(r[10] || "");
-      const checkout    = fechaADate(checkoutStr);
+      var checkinStr  = disp[i][0] || fechaToStr(r[3]);
+      var checkoutStr = disp[i][1] || fechaToStr(r[4]);
+      var estado      = String(r[7] || "");
+      var precio      = Number(r[8]) || 0;
+      var accesoRaw   = String(r[10] || "");
+      var checkout    = fechaADate(checkoutStr);
 
       if (!checkout) continue;
 
-      if (checkout >= hoy) {
-        // Hoy o futuro — incluir todos excepto cancelados
-        if (estado !== "Cancelado") {
-          proximos.push({
-            codigo:    String(r[0]),
-            idProp:    String(r[1]).trim(),
-            propiedad: String(r[2]).trim(),
-            checkin:   checkinStr,
-            checkout:  checkoutStr,
-            noches:    Number(r[5]) || 0,
-            estado,
-            precio,
-            notas:   String(r[9]  || ""),
-            accesos: accesoRaw ? accesoRaw.split("|").map(a => a.trim()).filter(Boolean) : [],
-          });
-        }
+      var aseo = {
+        codigo:    String(r[0]),
+        idProp:    String(r[1]).trim(),
+        propiedad: String(r[2]).trim(),
+        checkin:   checkinStr,
+        checkout:  checkoutStr,
+        noches:    Number(r[5]) || 0,
+        estado:    estado,
+        precio:    precio,
+        notas:     String(r[9]  || ""),
+        accesos:   accesoRaw ? accesoRaw.split("|").map(function(a){return a.trim();}).filter(Boolean) : [],
+      };
+
+      if (estado === "Completado") {
+        aseo.fechaCompletado = String(r[12] || "");
+        historial.push(aseo);
+      } else if (checkout >= hoy) {
+        if (estado !== "Cancelado") proximos.push(aseo);
       } else {
-        // Pasado — siempre va al historial, cualquier estado
-        historial.push({
-          codigo:          String(r[0]),
-          idProp:          String(r[1]).trim(),
-          propiedad:       String(r[2]).trim(),
-          checkin:         checkinStr,
-          checkout:        checkoutStr,
-          noches:          Number(r[5]) || 0,
-          estado,
-          precio,
-          fechaCompletado: String(r[12] || ""),
-        });
+        aseo.fechaCompletado = String(r[12] || "");
+        historial.push(aseo);
       }
     }
   }
 
-  proximos.sort((a, b) => {
-    const da = fechaADate(a.checkout), db = fechaADate(b.checkout);
-    if (!da || !db) return 0;
-    return da - db;
+  proximos.sort(function(a,b){
+    var da = fechaADate(a.checkout), db = fechaADate(b.checkout);
+    return da && db ? da - db : 0;
+  });
+  historial.sort(function(a,b){
+    var da = fechaADate(a.checkout), db = fechaADate(b.checkout);
+    return da && db ? db - da : 0;
   });
 
-  // Historial: más reciente primero
-  historial.sort((a, b) => {
-    const da = fechaADate(a.checkout), db = fechaADate(b.checkout);
-    if (!da || !db) return 0;
-    return db - da;
-  });
+  var totalGanado = 0;
+  for (var j = 0; j < historial.length; j++) {
+    if (historial[j].estado === "Completado") totalGanado += historial[j].precio;
+  }
 
-  return { proximos, historial };
+  return respond(true, { proximos: proximos, historial: historial, totalGanado: totalGanado });
 }
 
 // ============================================================
-// MARCAR ASEO COMO COMPLETADO
+// ASEADORA — completarAseo (guarda form completo en cols 14-20)
+// ============================================================
+// Layout extendido:
+//  1 Codigo | 2 IdProp | 3 Propiedad | 4 Checkin | 5 Checkout | 6 Noches
+//  7 Aseadora | 8 Estado | 9 Precio | 10 Notas | 11 Acceso | 12 CalId | 13 Completado
+//  14 Entrada | 15 Salida | 16 Revision (json) | 17 Reposicion (json)
+//  18 Funcionamiento (json) | 19 Reporte | 20 Video
+
+function ensureAseosFormColumns(hoja) {
+  var lastCol = hoja.getLastColumn();
+  if (lastCol >= 20) return;
+  var headers = ["Entrada","Salida","Revision","Reposicion","Funcionamiento","Reporte","Video"];
+  hoja.getRange(1, lastCol + 1, 1, headers.length - (lastCol - 13))
+    .setValues([headers.slice(lastCol - 13)])
+    .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
+}
+
+function handleCompletarAseo(body) {
+  var codigo    = String(body.codigo    || "").trim();
+  var nombre    = String(body.nombre    || "").trim();
+  var notas     = String(body.notas     || "").trim();
+  var videoLink = String(body.videoLink || body.video || "").trim();
+  var entrada   = String(body.entrada   || "").trim();
+  var salida    = String(body.salida    || "").trim();
+  var revision       = body.revision       ? JSON.stringify(body.revision)       : "";
+  var reposicion     = body.reposicion     ? JSON.stringify(body.reposicion)     : "";
+  var funcionamiento = body.funcionamiento ? JSON.stringify(body.funcionamiento) : "";
+  var reporte   = String(body.reporte   || "").trim();
+
+  if (!codigo || !nombre) return respond(false, null, "Codigo y nombre requeridos");
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado, intenta de nuevo"); }
+
+  try {
+    var ss   = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+    ensureAseosFormColumns(hoja);
+
+    var hoy   = new Date(); hoy.setHours(0,0,0,0);
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+    var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+
+    for (var i = 0; i < datos.length; i++) {
+      if (String(datos[i][0]) !== codigo) continue;
+      if (String(datos[i][6]).trim() !== nombre) return respond(false, null, "No autorizado");
+
+      var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
+      var checkout    = fechaADate(checkoutStr);
+      if (!checkout)      return respond(false, null, "Fecha invalida");
+      if (checkout > hoy) return respond(false, null, "No puedes completar aseos futuros");
+
+      var fila  = i + 2;
+      var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+
+      // Batch write: cols 8 (Estado) y 13 (Completado) en una sola op para las
+      // celdas que son adyacentes al rango formulario. Para minimizar llamadas
+      // a Sheets API hacemos updates por celda relevante.
+      hoja.getRange(fila, 8).setValue("Completado");
+      hoja.getRange(fila, 13).setValue(ahora);
+      if (notas) hoja.getRange(fila, 10).setValue(notas);
+
+      // Batch write para columnas del form (14-20) en un solo setValues
+      hoja.getRange(fila, 14, 1, 7).setValues([[entrada, salida, revision, reposicion, funcionamiento, reporte, videoLink]]);
+
+      hoja.getRange(fila, 1, 1, 20).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+
+      // Sync al master
+      var master = ss.getSheetByName(CONFIG.hojaMaestra);
+      if (master && master.getLastRow() >= 2) {
+        var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+        for (var j = 0; j < mc.length; j++) {
+          if (String(mc[j][0]) === codigo) {
+            master.getRange(j+2, 7).setValue("Finalizado");
+            master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
+            break;
+          }
+        }
+      }
+
+      if (videoLink) {
+        registrarVideoEnHoja({
+          codigo:    codigo,
+          propiedad: String(datos[i][2]),
+          aseadora:  nombre,
+          checkout:  checkoutStr,
+          videoLink: videoLink,
+          notas:     notas,
+        });
+      }
+
+      return respond(true, null);
+    }
+    return respond(false, null, "Aseo no encontrado");
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
+}
+
+// ============================================================
+// ADMIN — getAllAseos
 // ============================================================
 
-function finalizarAseo(codigo, nombre) {
-  const ss   = getSS();
-  const hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja || hoja.getLastRow() < 2) return { ok: false, msg: "Hoja no encontrada" };
+function handleGetAllAseos(body) {
+  var filtroAseadora = String(body.filtroAseadora || "").trim().toLowerCase();
+  var fechaInicio    = String(body.fechaInicio    || "").trim();
+  var fechaFin       = String(body.fechaFin       || "").trim();
 
-  const hoy   = new Date(); hoy.setHours(0,0,0,0);
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  const disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return respond(true, []);
 
-  for (let i = 0; i < datos.length; i++) {
-    if (String(datos[i][0]) !== String(codigo)) continue;
-    if (String(datos[i][6]) !== String(nombre))  return { ok: false, msg: "No autorizado" };
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var dInicio = fechaInicio ? fechaADate(fechaInicio) : null;
+  var dFin    = fechaFin    ? fechaADate(fechaFin)    : null;
 
-    const checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
-    const checkout    = fechaADate(checkoutStr);
-    if (!checkout)      return { ok: false, msg: "Fecha inválida" };
-    if (checkout > hoy) return { ok: false, msg: "No puedes completar aseos futuros" };
+  var result = [];
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    if (!String(r[0])) continue;
 
-    const fila  = i + 2;
-    const ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
-    hoja.getRange(fila, 8).setValue("Completado");   // col 8 = Estado
-    hoja.getRange(fila, 13).setValue(ahora);          // col 13 = Fecha Completado
-    hoja.getRange(fila, 1, 1, 13)
-      .setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+    var aseadora    = String(r[6] || "").trim();
+    var checkinStr  = disp[i][0] || fechaToStr(r[3]);
+    var checkoutStr = disp[i][1] || fechaToStr(r[4]);
+    var checkout    = fechaADate(checkoutStr);
 
-    // Sync to master sheet
-    const master = ss.getSheetByName(CONFIG.hojaMaestra);
+    if (filtroAseadora && aseadora.toLowerCase() !== filtroAseadora) continue;
+    if (dInicio && checkout && checkout < dInicio) continue;
+    if (dFin    && checkout && checkout > dFin)    continue;
+
+    result.push({
+      codigo:          String(r[0]),
+      idProp:          String(r[1]).trim(),
+      propiedad:       String(r[2]).trim(),
+      checkin:         checkinStr,
+      checkout:        checkoutStr,
+      noches:          Number(r[5]) || 0,
+      aseadora:        aseadora,
+      estado:          String(r[7] || ""),
+      precio:          Number(r[8]) || 0,
+      notas:           String(r[9]  || ""),
+      acceso:          String(r[10] || ""),
+      fechaCompletado: String(r[12] || ""),
+    });
+  }
+
+  result.sort(function(a,b){
+    var da = fechaADate(a.checkout), db = fechaADate(b.checkout);
+    return da && db ? da - db : 0;
+  });
+
+  return respond(true, result);
+}
+
+// ============================================================
+// ADMIN — getHistorial (filtros por mes/rango/aseadora/propiedad)
+// ============================================================
+
+function handleGetHistorial(body) {
+  var nombre   = String(body.nombre   || "").trim();         // si se setea, solo esa aseadora
+  var propId   = String(body.propId   || "").trim();
+  var year     = body.year   != null ? Number(body.year)   : null;
+  var month    = body.month  != null ? Number(body.month)  : null;  // 0-11
+  var desdeStr = String(body.desde  || "").trim();           // dd/MM/yyyy o yyyy-MM-dd
+  var hastaStr = String(body.hasta  || "").trim();
+
+  function parseDate(s) {
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      var p = s.split("-");
+      return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+    }
+    return fechaADate(s);
+  }
+  var desde = parseDate(desdeStr);
+  var hasta = parseDate(hastaStr);
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) {
+    return respond(true, { items: [], total: 0, count: 0, porAseadora: {} });
+  }
+
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+
+  var items = [];
+  var total = 0;
+  var porAseadora = {};
+
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    if (String(r[7] || "") !== "Completado") continue;
+
+    var aseadora = String(r[6] || "").trim();
+    if (nombre && aseadora.toLowerCase() !== nombre.toLowerCase()) continue;
+    if (propId && String(r[1]).trim() !== propId) continue;
+
+    var checkoutStr = disp[i][1] || fechaToStr(r[4]);
+    var completadoStr = String(r[12] || "").split(" ")[0];
+    var dt = fechaADate(completadoStr) || fechaADate(checkoutStr);
+    if (!dt) continue;
+
+    if (year != null && dt.getFullYear() !== year) continue;
+    if (month != null && dt.getMonth() !== month) continue;
+    if (desde && dt < desde) continue;
+    if (hasta) {
+      var hastaEnd = new Date(hasta.getTime()); hastaEnd.setHours(23,59,59,999);
+      if (dt > hastaEnd) continue;
+    }
+
+    var precio = Number(r[8]) || 0;
+    total += precio;
+    porAseadora[aseadora] = (porAseadora[aseadora] || 0) + precio;
+    items.push({
+      codigo:    String(r[0]),
+      idProp:    String(r[1]).trim(),
+      propiedad: String(r[2]).trim(),
+      checkin:   disp[i][0] || fechaToStr(r[3]),
+      checkout:  checkoutStr,
+      aseadora:  aseadora,
+      precio:    precio,
+      fechaCompletado: String(r[12] || ""),
+    });
+  }
+
+  items.sort(function(a, b) {
+    var da = fechaADate(a.fechaCompletado.split(" ")[0]) || fechaADate(a.checkout);
+    var db = fechaADate(b.fechaCompletado.split(" ")[0]) || fechaADate(b.checkout);
+    return da && db ? db - da : 0;
+  });
+
+  return respond(true, { items: items, total: total, count: items.length, porAseadora: porAseadora });
+}
+
+// ============================================================
+// ADMIN — asignarAseo
+// ============================================================
+
+function handleAsignarAseo(body) {
+  var codigo   = String(body.codigo   || "").trim();
+  var aseadora = String(body.aseadora || "").trim();
+  if (!codigo) return respond(false, null, "Codigo requerido");
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
+  try {
+    var ss   = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+    var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+    var aseoInfo = null;
+
+    for (var i = 0; i < datos.length; i++) {
+      if (String(datos[i][0]) !== codigo) continue;
+      var fila = i + 2;
+      hoja.getRange(fila, 7).setValue(aseadora);
+
+      var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
+      aseoInfo = {
+        codigo:    codigo,
+        propiedad: String(datos[i][2]),
+        checkout:  checkoutStr,
+      };
+      break;
+    }
+
+    if (!aseoInfo) return respond(false, null, "Aseo no encontrado");
+
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
     if (master && master.getLastRow() >= 2) {
-      const mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-      for (let j = 0; j < mc.length; j++) {
-        if (String(mc[j][0]) === String(codigo)) {
-          master.getRange(j+2, 7).setValue("Finalizado");
-          master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
+      var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+      for (var j = 0; j < mc.length; j++) {
+        if (String(mc[j][0]) === codigo) {
+          master.getRange(j+2, 8).setValue(aseadora);
           break;
         }
       }
     }
 
-    return { ok: true };
+    if (aseadora) notificarHubspot(aseoInfo, aseadora);
+
+    return respond(true, null);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
   }
-  return { ok: false, msg: "Aseo no encontrado" };
 }
 
 // ============================================================
-// AUTO-COMPLETAR ASEOS PASADOS (corre a las 10 PM)
+// ADMIN — moverAseo
+// ============================================================
+
+function handleMoverAseo(body) {
+  var codigo     = String(body.codigo     || "").trim();
+  var nuevaFecha = String(body.nuevaFecha || "").trim();
+
+  if (!codigo || !nuevaFecha) return respond(false, null, "Codigo y nuevaFecha requeridos");
+  if (!fechaADate(nuevaFecha)) return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var encontrado = false;
+
+  for (var i = 0; i < datos.length; i++) {
+    if (String(datos[i][0]) !== codigo) continue;
+    var fila = i + 2;
+    hoja.getRange(fila, 5).setValue(nuevaFecha).setNumberFormat("@");
+    encontrado = true;
+    break;
+  }
+
+  if (!encontrado) return respond(false, null, "Aseo no encontrado");
+
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  if (master && master.getLastRow() >= 2) {
+    var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+    for (var j = 0; j < mc.length; j++) {
+      if (String(mc[j][0]) === codigo) {
+        master.getRange(j+2, 5).setValue(nuevaFecha).setNumberFormat("@");
+        break;
+      }
+    }
+  }
+
+  return respond(true, null);
+}
+
+// ============================================================
+// AGREGAR ASEO MANUAL
+// ============================================================
+
+function handleAgregarAseo(body) {
+  var propiedad  = String(body.propiedad  || "").trim();
+  var idProp     = String(body.idProp     || "").trim();
+  var checkout   = String(body.checkout   || "").trim();
+  var aseadora   = String(body.aseadora   || "").trim();
+  var precio     = Number(body.precio)    || 0;
+  var notas      = String(body.notas      || "").trim();
+  var acceso     = String(body.acceso     || "").trim();
+
+  if (!propiedad || !checkout) return respond(false, null, "Propiedad y fecha requeridas");
+  if (!fechaADate(checkout))   return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
+
+  var lastRow = hoja.getLastRow();
+  var codigo = "MAN" + String(lastRow).padStart(4, "0");
+
+  var fila = [
+    codigo, idProp, propiedad,
+    checkout, checkout, 0,
+    "Pendiente", aseadora, precio,
+    notas, acceso, "", ""
+  ];
+  hoja.appendRow(fila);
+
+  var newRow = hoja.getLastRow();
+  hoja.getRange(newRow, 1, 1, 11).setNumberFormat("@");
+  hoja.getRange(newRow, 9).setNumberFormat("0");
+
+  return respond(true, { codigo: codigo });
+}
+
+// ============================================================
+// PROPIEDADES
+// ============================================================
+
+function getPropiedades() {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
+  if (!hoja || hoja.getLastRow() < 2) return [];
+  var lastCol = Math.max(hoja.getLastColumn(), 7);
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
+  var props = [];
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    var id  = String(r[0]).trim();
+    var nom = String(r[1]).trim();
+    var url = String(r[4] || "").trim();
+    if (!id || !nom) continue;
+    props.push({
+      id:            id,
+      nombre:        nom,
+      precioAseo:    Number(r[2]) || 0,
+      acceso:        String(r[3] || "").trim(),
+      icalUrl:       url,
+      empleadaAuto:  String(r[5] || "").trim(),
+      folderId:      String(r[6] || "").trim(),
+    });
+  }
+  return props;
+}
+
+function handleGetPropiedades(body) {
+  return respond(true, getPropiedades());
+}
+
+function handleAgregarPropiedad(body) {
+  var datos = body.datos || {};
+  var nombre    = String(datos.nombre    || "").trim();
+  var acceso    = String(datos.acceso    || "").trim();
+  var icalUrl   = String(datos.icalUrl   || "").trim();
+  var precioAseo = Number(datos.precioAseo) || 0;
+  var empleadaAuto = String(datos.empleadaAuto || "").trim();
+
+  if (!nombre || !icalUrl) return respond(false, null, "Nombre e iCal URL requeridos");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
+  if (!hoja) return respond(false, null, "Hoja Propiedades no encontrada");
+
+  var existentes = [];
+  if (hoja.getLastRow() > 1) {
+    existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues().flat().map(String);
+  }
+  var nums = existentes.map(function(id){ return parseInt(id.replace("#","")) || 0; });
+  var maxNum = nums.length ? Math.max.apply(null, nums) : 0;
+  var nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
+
+  var folderId = "";
+  try { folderId = crearCarpetaPropiedad(nombre); } catch(e) { Logger.log("Drive: " + e.message); }
+
+  var nuevaFila = [nuevoId, nombre, precioAseo, acceso, icalUrl, empleadaAuto, folderId];
+  var fi = hoja.getLastRow() + 1;
+  hoja.getRange(fi, 1, 1, 7).setValues([nuevaFila]);
+  hoja.getRange(fi, 3, 1, 1).setNumberFormat("$#,##0");
+  hoja.getRange(fi, 1, 1, 7)
+    .setBackground(fi % 2 === 0 ? "#f8f9fa" : "#ffffff")
+    .setFontFamily("Arial").setFontSize(10);
+
+  return respond(true, { id: nuevoId });
+}
+
+function handleActualizarPropiedad(body) {
+  var id    = String(body.id || "").trim();
+  var datos = body.datos || {};
+  if (!id) return respond(false, null, "ID requerido");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
+  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+  var existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  for (var i = 0; i < existentes.length; i++) {
+    if (String(existentes[i][0]).trim() !== id) continue;
+    var fila = i + 2;
+    if (datos.nombre      !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
+    if (datos.precioAseo  !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
+    if (datos.acceso      !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
+    if (datos.icalUrl     !== undefined) hoja.getRange(fila, 5).setValue(datos.icalUrl);
+    if (datos.empleadaAuto !== undefined) hoja.getRange(fila, 6).setValue(datos.empleadaAuto);
+    return respond(true, null);
+  }
+  return respond(false, null, "Propiedad no encontrada: " + id);
+}
+
+// ============================================================
+// PERSONAL
+// ============================================================
+
+function handleGetPersonal(body) {
+  var personal = getPersonal();
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  var ganancias = {};
+
+  if (hoja && hoja.getLastRow() >= 2) {
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 9).getValues();
+    for (var i = 0; i < datos.length; i++) {
+      var nombre = String(datos[i][6] || "").trim();
+      var estado = String(datos[i][7] || "");
+      var precio = Number(datos[i][8]) || 0;
+      if (!nombre) continue;
+      if (!ganancias[nombre]) ganancias[nombre] = 0;
+      if (estado === "Completado") ganancias[nombre] += precio;
+    }
+  }
+
+  var result = personal.map(function(p) {
+    return {
+      nombre:     p.nombre,
+      email:      p.email,
+      formulario: p.formulario,
+      carpeta:    p.carpeta,
+      telefono:   p.telefono,
+      gananciaTotal: ganancias[p.nombre] || 0,
+    };
+  });
+  return respond(true, result);
+}
+
+function handleActualizarPersonal(body) {
+  var nombre = String(body.nombre || "").trim();
+  var datos  = body.datos || {};
+  if (!nombre) return respond(false, null, "Nombre requerido");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+  var existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  for (var i = 0; i < existentes.length; i++) {
+    if (String(existentes[i][1]).trim().toLowerCase() !== nombre.toLowerCase()) continue;
+    var fila = i + 2;
+    if (datos.pin       !== undefined) hoja.getRange(fila, 3).setValue(String(datos.pin)).setNumberFormat("@");
+    if (datos.email     !== undefined) hoja.getRange(fila, 4).setValue(datos.email);
+    if (datos.carpeta   !== undefined) hoja.getRange(fila, 6).setValue(datos.carpeta);
+    if (datos.telefono  !== undefined) hoja.getRange(fila, 7).setValue(datos.telefono);
+    if (datos.formulario !== undefined) hoja.getRange(fila, 5).setValue(datos.formulario);
+    return respond(true, null);
+  }
+  return respond(false, null, "Empleada no encontrada: " + nombre);
+}
+
+// ============================================================
+// VIDEOS — getUploadUrl
+// ============================================================
+
+function handleGetUploadUrl(body) {
+  var codigo    = String(body.codigo    || "").trim();
+  var propiedad = String(body.propiedad || "").trim();
+  var filename  = String(body.filename  || "video.mp4").trim();
+
+  var props    = getPropiedades();
+  var folderId = "";
+  for (var i = 0; i < props.length; i++) {
+    if (props[i].nombre === propiedad || props[i].id === propiedad) {
+      folderId = props[i].folderId; break;
+    }
+  }
+
+  if (!folderId) {
+    try {
+      folderId = crearCarpetaPropiedad(propiedad);
+      actualizarFolderIdPropiedad(propiedad, folderId);
+    } catch(e) {
+      return respond(false, null, "No se pudo crear carpeta Drive: " + e.message);
+    }
+  }
+
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var fecha = hoyStr().replace(/\//g, "-");
+    var nombreArchivo = fecha + "_" + codigo + "_" + filename;
+    var metadata = { name: nombreArchivo, parents: [folderId] };
+
+    var response = UrlFetchApp.fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+      {
+        method: "post",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json; charset=UTF-8",
+          "X-Upload-Content-Type": "video/mp4",
+        },
+        payload: JSON.stringify(metadata),
+        muteHttpExceptions: true,
+      }
+    );
+
+    var uploadUrl = response.getHeaders()["Location"] || response.getHeaders()["location"];
+    if (!uploadUrl) {
+      return respond(false, null, "No se obtuvo URL de upload (respuesta: " + response.getContentText() + ")");
+    }
+
+    return respond(true, { uploadUrl: uploadUrl, folderId: folderId, filename: nombreArchivo });
+  } catch(e) {
+    return respond(false, null, e.message);
+  }
+}
+
+// ============================================================
+// VIDEOS — registrarVideo (despues del upload)
+// ============================================================
+
+function handleRegistrarVideo(body) {
+  var codigo    = String(body.codigo    || "").trim();
+  var propiedad = String(body.propiedad || "").trim();
+  var aseadora  = String(body.aseadora  || "").trim();
+  var checkout  = String(body.checkout  || "").trim();
+  var fileId    = String(body.fileId    || "").trim();
+  var notas     = String(body.notas     || "").trim();
+
+  var videoLink = fileId
+    ? "https://drive.google.com/file/d/" + fileId + "/view"
+    : String(body.videoLink || "").trim();
+
+  registrarVideoEnHoja({ codigo: codigo, propiedad: propiedad, aseadora: aseadora, checkout: checkout, videoLink: videoLink, notas: notas });
+  return respond(true, null);
+}
+
+function registrarVideoEnHoja(data) {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaVideos);
+  if (!hoja) {
+    hoja = ss.insertSheet(CONFIG.hojaVideos);
+    var enc = ["Codigo Aseo","Propiedad","Aseadora","Checkout","Link Video","Notas","Registrado"];
+    hoja.getRange(1,1,1,enc.length).setValues([enc])
+      .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold").setFontFamily("Arial");
+    hoja.setFrozenRows(1);
+  }
+  var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+  hoja.appendRow([data.codigo, data.propiedad, data.aseadora, data.checkout, data.videoLink, data.notas, ahora]);
+}
+
+// ============================================================
+// HUBSPOT
+// ============================================================
+
+function notificarHubspot(aseo, aseadora) {
+  var apiKey = PropertiesService.getScriptProperties().getProperty("HUBSPOT_API_KEY");
+  if (!apiKey) return;
+  var payload = {
+    properties: {
+      subject: "Aseo asignado: " + aseo.propiedad,
+      hs_note_body: "Aseadora: " + aseadora + " | Checkout: " + aseo.checkout + " | Codigo: " + aseo.codigo,
+    }
+  };
+  try {
+    UrlFetchApp.fetch("https://api.hubapi.com/crm/v3/objects/notes", {
+      method: "post",
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+  } catch(e) {
+    Logger.log("HubSpot error: " + e.message);
+  }
+}
+
+// ============================================================
+// DRIVE — helpers
+// ============================================================
+
+function getCarpetaRaiz() {
+  var folders = DriveApp.getFoldersByName(CONFIG.carpetaRaiz);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(CONFIG.carpetaRaiz);
+}
+
+function crearCarpetaPropiedad(nombrePropiedad) {
+  var raiz = getCarpetaRaiz();
+  var existing = raiz.getFoldersByName(nombrePropiedad);
+  if (existing.hasNext()) return existing.next().getId();
+  return raiz.createFolder(nombrePropiedad).getId();
+}
+
+function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
+  if (!hoja || hoja.getLastRow() < 2) return;
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 2).getValues();
+  for (var i = 0; i < datos.length; i++) {
+    if (String(datos[i][1]).trim() === nombrePropiedad) {
+      hoja.getRange(i+2, 7).setValue(folderId);
+      return;
+    }
+  }
+}
+
+// ============================================================
+// FORMULARIO — respuestas del Google Form
+// ============================================================
+
+function handleGetFormRespuestas(body) {
+  var SHEET_ID = "1Ol1gUq3lVVptZYdhjhSM0u08L99rQxeIB8mpO2Tzr2I";
+  try {
+    var ss   = SpreadsheetApp.openById(SHEET_ID);
+    var hoja = ss.getSheets()[0];
+    if (!hoja || hoja.getLastRow() < 2) return respond(true, { headers: [], rows: [] });
+
+    var lastCol = hoja.getLastColumn();
+    var lastRow = hoja.getLastRow();
+    var headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    var datos   = hoja.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+
+    var rows = [];
+    for (var i = 0; i < datos.length; i++) {
+      var row = [];
+      for (var j = 0; j < lastCol; j++) {
+        row.push(String(datos[i][j] || ""));
+      }
+      rows.push(row);
+    }
+
+    rows.reverse();
+    return respond(true, { headers: headers, rows: rows });
+  } catch(err) {
+    return respond(false, null, "No se pudo leer el formulario: " + err.message);
+  }
+}
+
+// ============================================================
+// AUTO-COMPLETAR ASEOS PASADOS (trigger 10PM)
 // ============================================================
 
 function autoCompletarAseosPasados() {
-  const ss   = getSS();
-  const hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return;
 
-  const hoy   = new Date(); hoy.setHours(0,0,0,0);
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  const disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
-  const ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+  var hoy   = new Date(); hoy.setHours(0,0,0,0);
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
 
-  let count = 0;
-  for (let i = 0; i < datos.length; i++) {
-    const estado = String(datos[i][7]);
+  var count = 0;
+  for (var i = 0; i < datos.length; i++) {
+    var estado = String(datos[i][7]);
     if (estado === "Completado" || estado === "Cancelado") continue;
-    if (!String(datos[i][6])) continue; // sin aseadora asignada
+    if (!String(datos[i][6])) continue;
 
-    const checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
-    const checkout    = fechaADate(checkoutStr);
+    var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
+    var checkout    = fechaADate(checkoutStr);
     if (!checkout || checkout >= hoy) continue;
 
-    const fila   = i + 2;
-    const codigo = String(datos[i][0]);
+    var fila   = i + 2;
+    var codigo = String(datos[i][0]);
     hoja.getRange(fila, 8).setValue("Completado");
     hoja.getRange(fila, 13).setValue(ahora + " (auto)");
     hoja.getRange(fila, 1, 1, 13).setBackground("#e8f5e9");
 
-    // Sync al master sheet
-    const master = ss.getSheetByName(CONFIG.hojaMaestra);
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
     if (master && master.getLastRow() >= 2) {
-      const mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-      for (let j = 0; j < mc.length; j++) {
+      var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+      for (var j = 0; j < mc.length; j++) {
         if (String(mc[j][0]) === codigo) {
           master.getRange(j+2, 7).setValue("Finalizado");
           master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
@@ -409,702 +1008,61 @@ function autoCompletarAseosPasados() {
     }
     count++;
   }
-
   Logger.log("autoCompletarAseosPasados: " + count + " aseos marcados.");
 }
 
 // ============================================================
-// HOJA "🧹 TODOS LOS ASEOS"
+// MENU
 // ============================================================
 
-// Columns:
-// 1 Código | 2 ID Prop | 3 Propiedad | 4 Check-in | 5 Check-out | 6 Noches
-// 7 Aseadora | 8 Estado | 9 Precio | 10 Notas | 11 Acceso | 12 Cal ID (hidden) | 13 Completado
-
-function crearHojaAseos() {
-  const ss = getSS();
-  let   h  = ss.getSheetByName(CONFIG.hojaAseos);
-  if (h) {
-    getSS().toast("La hoja ya existe.", CONFIG.hojaAseos, 4);
-    return h;
-  }
-  h = ss.insertSheet(CONFIG.hojaAseos);
-  const enc = ["Código Reserva","ID Propiedad","Propiedad","Check-in","Check-out","Noches",
-               "Aseadora","Estado","Precio Aseo","Notas","Acceso","Cal Event ID","Completado"];
-  h.getRange(1,1,1,enc.length).setValues([enc])
-    .setBackground("#1a1a2e").setFontColor("#ffffff")
-    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
-  [160,80,240,100,100,55,130,110,120,180,280,1,140].forEach((w,i)=>h.setColumnWidth(i+1,w));
-  h.hideColumns(12);
-  h.setFrozenRows(1);
-  const nombres = CONFIG.empleadas.map(e => e.nombre);
-  h.getRange("G2:G2000").setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(["", ...nombres], true).setAllowInvalid(false).build()
-  );
-  h.getRange("H2:H2000").setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(["Pendiente","Completado","Cancelado"], true)
-      .setAllowInvalid(false).build()
-  );
-  getSS().toast("✅ Hoja creada.", CONFIG.hojaAseos, 4);
-  return h;
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Medellin Concierge")
+    .addItem("Sincronizar Airbnb",           "sincronizarCalendarios")
+    .addItem("Sincronizar Google Calendar",   "sincronizarGoogleCalendar")
+    .addSeparator()
+    .addItem("Crear triggers automaticos",    "crearTriggersAutomaticos")
+    .addItem("Agregar Admin a Personal",       "agregarAdmin")
+    .addToUi();
 }
 
-function sincronizarHojaAseos() {
-  const ss     = getSS();
-  const master = ss.getSheetByName(CONFIG.hojaMaestra);
-  if (!master || master.getLastRow() < 2) return;
+// ============================================================
+// SETUP — agregar Admin a hoja Personal (correr UNA vez)
+// ============================================================
 
-  let hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja) hoja = crearHojaAseos();
+function agregarAdmin() {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+  if (!hoja) { Logger.log("Hoja Personal no existe"); return; }
 
-  // Build index of what's already in Todos los Aseos
-  const existentes = {};
   if (hoja.getLastRow() > 1) {
-    const exDatos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-    for (let i = 0; i < exDatos.length; i++) {
-      const cod = String(exDatos[i][0]);
-      if (cod) existentes[cod] = { row: i+2, estado: String(exDatos[i][7]) };
-    }
-  }
-
-  // Read master with display values for dates
-  const mDatos = master.getRange(2, 1, master.getLastRow()-1, 13).getValues();
-  const mDisp  = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
-
-  const nuevas    = [];
-
-  for (let i = 0; i < mDatos.length; i++) {
-    const r   = mDatos[i];
-    const cod = String(r[0]);
-    if (!cod) continue;
-
-    const checkinStr   = mDisp[i][0] || fechaToStr(r[3]);
-    const checkoutStr  = mDisp[i][1] || fechaToStr(r[4]);
-    const estadoMaster = String(r[6] || "");
-
-    if (existentes[cod]) {
-      // Update existing row — but never downgrade a Completado entry
-      const estadoActual = existentes[cod].estado;
-      if (estadoActual === "Completado") continue;
-
-      let nuevoEstado = estadoActual || "Pendiente";
-      if (estadoMaster === "Cancelada")  nuevoEstado = "Cancelado";
-      if (estadoMaster === "Finalizado") nuevoEstado = "Completado";
-
-      const fila = existentes[cod].row;
-      // Write updated row data (preserve cols 1, 12, 13)
-      hoja.getRange(fila, 3).setValue(String(r[2] || ""));          // propiedad
-      hoja.getRange(fila, 4).setValue(checkinStr).setNumberFormat("@");
-      hoja.getRange(fila, 5).setValue(checkoutStr).setNumberFormat("@");
-      hoja.getRange(fila, 6).setValue(r[5] || 0);                   // noches
-      hoja.getRange(fila, 7).setValue(String(r[7] || ""));          // aseadora
-      hoja.getRange(fila, 8).setValue(nuevoEstado);                  // estado
-      hoja.getRange(fila, 9).setValue(Number(r[8]) || 0);            // precio
-      hoja.getRange(fila, 10).setValue(String(r[9] || ""));         // notas
-      hoja.getRange(fila, 11).setValue(String(r[10] || ""));        // acceso
-      const bg = nuevoEstado === "Completado" ? "#e8f5e9" :
-                 nuevoEstado === "Cancelado"  ? "#fff3f3" : "#ffffff";
-      hoja.getRange(fila, 1, 1, 13).setBackground(bg);
-      if (nuevoEstado === "Completado") {
-        // Set completion timestamp if not already set
-        const existingTs = hoja.getRange(fila, 13).getValue();
-        if (!existingTs) {
-          hoja.getRange(fila, 13).setValue(
-            Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm")
-          );
-        }
-      }
-
-    } else {
-      // New entry
-      const estado = estadoMaster === "Cancelada"  ? "Cancelado"  :
-                     estadoMaster === "Finalizado" ? "Completado" : "Pendiente";
-      const ts     = estado === "Completado" ?
-        Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm") : "";
-      nuevas.push([
-        cod, r[1], r[2], checkinStr, checkoutStr, r[5],
-        r[7]||"", estado, r[8]||0, r[9]||"", r[10]||"", r[11]||"", ts
-      ]);
-    }
-  }
-
-  if (nuevas.length > 0) {
-    const fi = hoja.getLastRow() + 1;
-    hoja.getRange(fi, 1, nuevas.length, 13).setValues(nuevas);
-    hoja.getRange(fi, 4, nuevas.length, 2).setNumberFormat("@");
-    hoja.getRange(fi, 9, nuevas.length, 1).setNumberFormat("$#,##0");
-    for (let i = 0; i < nuevas.length; i++) {
-      const bg = nuevas[i][7] === "Completado" ? "#e8f5e9" :
-                 nuevas[i][7] === "Cancelado"  ? "#fff3f3" : "#f8f9fa";
-      hoja.getRange(fi+i, 1, 1, 13).setBackground(bg).setFontFamily("Arial").setFontSize(10);
-    }
-  }
-}
-
-// ============================================================
-// SINCRONIZAR AIRBNB
-// ============================================================
-
-function sincronizarCalendarios() {
-  const ss = getSS();
-  let hoja = ss.getSheetByName(CONFIG.hojaMaestra);
-  if (!hoja) hoja = ss.insertSheet(CONFIG.hojaMaestra);
-
-  const guardado    = leerDatosGuardados(hoja);
-  const propiedades = getPropiedades();
-
-  // Preserve manually-added rows (MANUAL- prefix)
-  const manuales = [];
-  if (hoja.getLastRow() > 1) {
-    const filas = hoja.getRange(2,1,hoja.getLastRow()-1,13).getValues();
-    for (const f of filas) if (String(f[0]).startsWith("MANUAL-")) manuales.push([...f]);
-  }
-
-  limpiarDatos(hoja);
-  configurarEncabezados(hoja);
-  aplicarDropdowns(hoja);
-
-  let reservas = [];
-  for (const prop of propiedades) {
-    if (!prop.icalUrl) continue;
-    reservas = reservas.concat(obtenerReservasDeICal(prop));
-  }
-  reservas.sort((a, b) => fechaADate(a.checkout) - fechaADate(b.checkout));
-  escribirReservas(hoja, reservas, guardado);
-
-  if (manuales.length > 0) {
-    const fi = hoja.getLastRow() + 1;
-    hoja.getRange(fi, 1, manuales.length, 13).setValues(manuales);
-    for (let i = 0; i < manuales.length; i++)
-      hoja.getRange(fi+i, 1, 1, 13).setBackground("#fff9e6").setFontFamily("Arial").setFontSize(10);
-  }
-
-  // Sync to the permanent Todos los Aseos sheet
-  sincronizarHojaAseos();
-
-  getSS().toast(
-    "✅ " + reservas.length + " reservas sincronizadas", "Airbnb Sync", 5);
-}
-
-// ============================================================
-// ICAL
-// ============================================================
-
-function obtenerReservasDeICal(prop) {
-  try {
-    const r = UrlFetchApp.fetch(prop.icalUrl, { muteHttpExceptions: true });
-    if (r.getResponseCode() !== 200) return [];
-    return parsearICal(r.getContentText(), prop);
-  } catch(e) {
-    Logger.log("Error iCal " + prop.nombre + ": " + e.message);
-    return [];
-  }
-}
-
-function parsearICal(texto, prop) {
-  const limpio  = texto.replace(/\r\n[ \t]/g, "");
-  const eventos = limpio.split("BEGIN:VEVENT");
-  const out     = [];
-  for (let i = 1; i < eventos.length; i++) {
-    const ev  = eventos[i];
-    const sum = extraer(ev, "SUMMARY") || "";
-    if (sum.includes("Not available")) continue;
-    const start = extraer(ev, "DTSTART");
-    const end   = extraer(ev, "DTEND");
-    if (!start || !end) continue;
-    const startClean = start.replace(/[^0-9]/g,"").substring(0,8);
-    const endClean   = end.replace(/[^0-9]/g,"").substring(0,8);
-    if (startClean.length < 8 || endClean.length < 8) continue;
-    const fi = new Date(parseInt(startClean.substring(0,4)), parseInt(startClean.substring(4,6))-1, parseInt(startClean.substring(6,8)));
-    const fo = new Date(parseInt(endClean.substring(0,4)),   parseInt(endClean.substring(4,6))-1,   parseInt(endClean.substring(6,8)));
-    if (isNaN(fi.getTime()) || isNaN(fo.getTime())) continue;
-    if (fo <= fi) continue;
-    const desc = extraer(ev, "DESCRIPTION") || "";
-    const hm   = desc.match(/reservations\/details\/(HM[A-Z0-9]+)/);
-    const uid  = extraer(ev, "UID") || "";
-    const cod  = hm ? hm[1] : uid.split("@")[0].substring(0, 20);
-    out.push({
-      codigo:       cod,
-      id:           prop.id,
-      propiedad:    prop.nombre,
-      checkin:      formatearFecha(fi),
-      checkout:     formatearFecha(fo),
-      noches:       Math.round((fo - fi) / 86400000),
-      estado:       "Confirmada",
-      precio:       prop.precioAseoInterno || 0,
-      acceso:       prop.acceso || "",
-      empleadaAuto: prop.empleadaAuto || "",
-    });
-  }
-  return out;
-}
-
-function extraer(txt, campo) {
-  const m = txt.match(new RegExp(campo + "[^:]*:([^\\n\\r]+)"));
-  return m ? m[1].trim() : "";
-}
-
-// ============================================================
-// HOJA MAESTRA — helpers
-// ============================================================
-
-function leerDatosGuardados(hoja) {
-  const g = {};
-  if (hoja.getLastRow() < 2) return g;
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  const disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
-  for (let i = 0; i < datos.length; i++) {
-    const f = datos[i];
-    const c = String(f[0]); if (!c) continue;
-    g[c] = {
-      empleada: String(f[7] || ""),
-      estado:   String(f[6] || ""),
-      notas:    String(f[9] || ""),
-      acceso:   String(f[10] || ""),
-      eventId:  String(f[11] || ""),
-      checkin:  disp[i][0] || fechaToStr(f[3]),
-      checkout: disp[i][1] || fechaToStr(f[4]),
-    };
-  }
-  return g;
-}
-
-function configurarEncabezados(hoja) {
-  const enc = ["Código Reserva","ID Propiedad","Propiedad","Check-in","Check-out","Noches",
-               "Estado","Empleada Asignada","Precio Aseo","Notas","Acceso","Cal Event ID","Notas Admin"];
-  hoja.getRange(1,1,1,enc.length).setValues([enc])
-    .setBackground("#1a1a2e").setFontColor("#ffffff")
-    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
-  [160,80,240,100,100,55,110,130,120,180,280,1,220].forEach((w,i)=>hoja.setColumnWidth(i+1,w));
-  hoja.hideColumns(12);
-  hoja.setFrozenRows(1);
-}
-
-function limpiarDatos(hoja) {
-  try {
-    const last   = hoja.getLastRow();
-    const frozen = hoja.getFrozenRows();
-    const first  = frozen + 1;
-    if (last >= first) hoja.deleteRows(first, last - frozen);
-  } catch(e) {
-    Logger.log("limpiarDatos: " + e.message);
-  }
-}
-
-function escribirReservas(hoja, reservas, guardado) {
-  if (!reservas.length) return;
-  const filas = reservas.map(r => {
-    const g   = guardado[r.codigo] || {};
-    let emp   = g.empleada || "";
-    if (!emp && r.empleadaAuto) emp = r.empleadaAuto;
-    const estado = g.estado === "Finalizado" ? "Finalizado" : (g.estado || r.estado);
-    return [r.codigo, r.id, r.propiedad, r.checkin, r.checkout, r.noches,
-            estado, emp, r.precio, g.notas||"", g.acceso||r.acceso||"",
-            g.eventId||"", ""];
-  });
-  hoja.getRange(2, 1, filas.length, 13).setValues(filas);
-  hoja.getRange(2, 4, filas.length, 2).setNumberFormat("@");
-  for (let i = 0; i < filas.length; i++) {
-    const bg = filas[i][6] === "Finalizado" ? "#e8f5e9" : i%2===0 ? "#f8f9fa" : "#ffffff";
-    hoja.getRange(i+2, 1, 1, 13).setBackground(bg).setFontFamily("Arial").setFontSize(10);
-  }
-  hoja.getRange(2, 9, filas.length, 1).setNumberFormat("$#,##0");
-}
-
-function aplicarDropdowns(hoja) {
-  const nombres = CONFIG.empleadas.map(e => e.nombre);
-  hoja.getRange("H2:H2000").setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(nombres, true).setAllowInvalid(false).build()
-  );
-  hoja.getRange("G2:G2000").setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(["Confirmada","Cancelada","Pendiente","Finalizado"], true)
-      .setAllowInvalid(false).build()
-  );
-}
-
-// ============================================================
-// GOOGLE CALENDAR
-// ============================================================
-
-function sincronizarGoogleCalendar() {
-  const ss   = getSS();
-  const hoja = ss.getSheetByName(CONFIG.hojaMaestra);
-  if (!hoja || hoja.getLastRow() < 2) return;
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  const disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
-  const cal   = CalendarApp.getDefaultCalendar();
-  let creados = 0, actualizados = 0;
-
-  for (let i = 0; i < datos.length; i++) {
-    const r       = datos[i]; const fila = i + 2;
-    const codigo  = String(r[0]);
-    const empNom  = String(r[7] || "");
-    const estado  = String(r[6] || "");
-    const eventId = String(r[11] || "");
-    if (!codigo || !empNom) continue;
-
-    if (estado === "Cancelada" || estado === "Finalizado") {
-      if (eventId) {
-        try { cal.getEventById(eventId).deleteEvent(); } catch(e) {}
-        hoja.getRange(fila, 12).setValue("");
-      }
-      continue;
-    }
-
-    const emp = CONFIG.empleadas.find(e => e.nombre === empNom);
-    if (!emp || !emp.email) continue;
-
-    const checkoutStr = disp[i][1] || fechaToStr(r[4]);
-    const fecha = fechaADate(checkoutStr);
-    if (!fecha) continue;
-
-    const checkinStr = disp[i][0] || fechaToStr(r[3]);
-    const inicio = new Date(fecha); inicio.setHours(11,0,0,0);
-    const fin    = new Date(fecha); fin.setHours(15,0,0,0);
-    const titulo = "🧹 Limpieza " + nombreDia(fecha) + " - " + r[2];
-    const desc   = [
-      "Código: " + codigo,
-      "Check-in: " + checkinStr + "  →  Check-out: " + checkoutStr,
-      "Noches: " + r[5],
-      "Precio: $" + Number(r[8]).toLocaleString("es-CO"),
-      r[9]  ? "Notas: " + r[9]   : "",
-      r[10] ? "Acceso: " + r[10] : "",
-    ].filter(Boolean).join("\n");
-
-    if (eventId) {
-      try {
-        const ev = cal.getEventById(eventId);
-        if (ev) {
-          ev.setTitle(titulo); ev.setTime(inicio, fin); ev.setDescription(desc);
-          const inv = ev.getGuestList().map(g => g.getEmail().toLowerCase());
-          if (!inv.includes(emp.email.toLowerCase())) ev.addGuest(emp.email);
-          actualizados++; continue;
-        }
-      } catch(e) {}
-    }
-    const nEv = cal.createEvent(titulo, inicio, fin, { guests: emp.email, sendInvites: true, description: desc });
-    hoja.getRange(fila, 12).setValue(nEv.getId());
-    creados++;
-  }
-  getSS().toast(
-    "📅 Calendario: " + creados + " creados, " + actualizados + " actualizados", "Google Calendar Sync", 5);
-}
-
-// ============================================================
-// REENVIAR INVITACIÓN
-// ============================================================
-
-function reenviarInvitacionSeleccionada() {
-  const hoja    = getSS().getSheetByName(CONFIG.hojaMaestra);
-  const fila    = hoja.getActiveRange().getRow(); if (fila < 2) return;
-  const d       = hoja.getRange(fila, 1, 1, 13).getValues()[0];
-  const dispD   = hoja.getRange(fila, 4, 1, 2).getDisplayValues()[0];
-  const empNom  = String(d[7] || "");
-  const checkoutStr = dispD[1] || fechaToStr(d[4]);
-  const fecha   = fechaADate(checkoutStr);
-  const prop    = String(d[2] || "");
-  const eventId = String(d[11] || "");
-  const emp     = CONFIG.empleadas.find(e => e.nombre === empNom);
-  if (!emp || !fecha || !emp.email) return;
-  const cal = CalendarApp.getDefaultCalendar();
-  if (eventId) {
-    try {
-      const ev = cal.getEventById(eventId);
-      if (ev) {
-        ev.removeGuest(emp.email); ev.addGuest(emp.email);
-        getSS().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
-        return;
-      }
-    } catch(e) {}
-  }
-  const ini = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0);
-  const fin = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59);
-  for (const ev of cal.getEvents(ini, fin)) {
-    if (ev.getTitle().includes(prop)) {
-      ev.removeGuest(emp.email); ev.addGuest(emp.email);
-      getSS().toast("📨 Reenviada a " + emp.nombre, "OK", 4);
+    var nombres = hoja.getRange(2, 2, hoja.getLastRow()-1, 1).getValues().flat().map(String);
+    if (nombres.some(function(n){ return n.toLowerCase() === "admin"; })) {
+      getSS().toast("Admin ya existe en Personal.", "Setup", 4);
       return;
     }
   }
-  getSS().toast("⚠️ No se encontró el evento", "Error", 4);
+
+  var fi = hoja.getLastRow() + 1;
+  hoja.getRange(fi, 1, 1, 7).setValues([[true, "Admin", "2025", "michaelmgm1249@gmail.com", "", "", ""]]);
+  hoja.getRange(fi, 3, 1, 1).setNumberFormat("@");
+  hoja.getRange(fi, 1, 1, 7).setBackground("#fff9e6").setFontFamily("Arial").setFontSize(10);
+  getSS().toast("Admin agregado a Personal (PIN: 2025).", "Setup", 5);
 }
-
-// ============================================================
-// IMPORTAR ASEOS PASADOS — correr UNA VEZ
-// ============================================================
-
-function importarAseosPasados() {
-  const ss   = getSS();
-  let   hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja) hoja = crearHojaAseos();
-
-  // Evitar duplicados
-  const existentes = new Set();
-  if (hoja.getLastRow() > 1) {
-    hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues()
-      .forEach(r => { if (r[0]) existentes.add(String(r[0])); });
-  }
-
-  // Aseos pasados del CSV de mayo 2026
-  // Columns: código, idProp, propiedad, checkin, checkout, noches, aseadora,
-  //          estado, precio, notas, acceso, calId, completado
-  const aseos = [
-    ["HMW3S24TCP", "#0092", "2H Apto Moderno en Laureles | Estadio y Metro",
-     "30/04/2026", "03/05/2026", 3, "", "Completado", 90000, "",
-     "Clave edificio: 662233# | Clave apto: 0052# | Dirección: Cra 68 # 48-25 edificio Monte Ignacio apto 502", "", "(importado)"],
-
-    ["HMXHNJAXZM", "#0094", "Suite Moderna en Laureles | 02",
-     "30/04/2026", "03/05/2026", 3, "", "Completado", 60000, "",
-     "Clave edificio: 475869# | Clave apto: 556699# | Dirección: Crr 78B # 49A-14 suite 2", "", "(importado)"],
-
-    ["HM3E42Q5HT", "#0091", "New Industrial Loft in Laureles | Stadium & Metro",
-     "30/04/2026", "06/05/2026", 6, "", "Completado", 90000, "",
-     "Clave edificio: 662233# | Clave apto: 5501# | Dirección: Crr 68 # 48-25 edificio monte Ignacio apto 501", "", "(importado)"],
-
-    ["HM2RPH3KHH", "#0002", "Luxury 3 Bedroom Apartment in Provenza",
-     "30/04/2026", "04/05/2026", 4, "", "Completado", 130000, "",
-     "Clave apto: Actualizar | Dirección: Cl. 13 #34-31, apto 1001", "", "(importado)"],
-  ];
-
-  const nuevos = aseos.filter(a => !existentes.has(a[0]));
-  if (!nuevos.length) {
-    getSS().toast("Ya estaban todos importados.", "Importar", 4);
-    return;
-  }
-
-  const fi = hoja.getLastRow() + 1;
-  hoja.getRange(fi, 1, nuevos.length, 13).setValues(nuevos);
-  hoja.getRange(fi, 4, nuevos.length, 2).setNumberFormat("@");
-  hoja.getRange(fi, 9, nuevos.length, 1).setNumberFormat("$#,##0");
-  for (let i = 0; i < nuevos.length; i++) {
-    hoja.getRange(fi+i, 1, 1, 13)
-      .setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
-  }
-
-  getSS()
-    .toast("✅ " + nuevos.length + " aseos importados. Asigna las aseadoras en la hoja.", "Importar", 6);
-}
-
-// ============================================================
-// AGREGAR ASEO MANUAL
-// ============================================================
-
-function agregarAseoManual() {
-  const propiedades = getPropiedades();
-  const empleadas   = CONFIG.empleadas.map(e => e.nombre);
-
-  const propsOpts = propiedades.map(p =>
-    '<option value="' + p.id + '|' + p.nombre.replace(/"/g,'') + '|' + p.precioAseoInterno + '|' + p.acceso.replace(/"/g,'') + '">' +
-    p.id + ' — ' + p.nombre + '</option>'
-  ).join('');
-
-  const empOpts = ['', ...empleadas].map(e =>
-    '<option value="' + e + '">' + (e || 'Sin asignar') + '</option>'
-  ).join('');
-
-  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
-    'body{font-family:Arial,sans-serif;font-size:14px;padding:16px;margin:0}' +
-    'label{display:block;margin-top:12px;font-weight:700;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.5px}' +
-    'select,input{width:100%;padding:9px;margin-top:4px;border:1.5px solid #ccc;border-radius:6px;font-size:14px;box-sizing:border-box}' +
-    '.row2{display:flex;gap:8px}.row2>div{flex:1}' +
-    '.btn{background:#1e3a5f;color:#fff;padding:13px;border:none;border-radius:7px;width:100%;font-size:15px;font-weight:700;cursor:pointer;margin-top:18px}' +
-    '.btn:hover{background:#152a47}.err{color:#c00;font-size:13px;margin-top:8px;display:none}' +
-    '</style></head><body>' +
-    '<label>Propiedad</label>' +
-    '<select id="prop" onchange="onProp()"><option value="">Selecciona propiedad...</option>' + propsOpts + '</select>' +
-    '<label>Fecha del aseo (check-out)</label>' +
-    '<input type="date" id="checkout">' +
-    '<div class="row2"><div><label>Noches</label><input type="number" id="noches" value="1" min="1"></div>' +
-    '<div><label>Precio ($COP)</label><input type="number" id="precio" value="0" min="0"></div></div>' +
-    '<label>Aseadora</label><select id="aseadora">' + empOpts + '</select>' +
-    '<label>Notas (opcional)</label><input type="text" id="notas" placeholder="Instrucciones especiales...">' +
-    '<button class="btn" onclick="guardar()">✅ Agregar Aseo</button>' +
-    '<div class="err" id="err">Completa Propiedad y Fecha.</div>' +
-    '<script>function onProp(){var p=document.getElementById("prop").value.split("|");if(p.length>=3)document.getElementById("precio").value=p[2];}' +
-    'function guardar(){var prop=document.getElementById("prop").value;var co=document.getElementById("checkout").value;' +
-    'if(!prop||!co){document.getElementById("err").style.display="block";return;}' +
-    'document.getElementById("err").style.display="none";' +
-    'var parts=prop.split("|");' +
-    'google.script.run.withSuccessHandler(function(m){alert(m);google.script.host.close();})' +
-    '.withFailureHandler(function(e){alert("Error: "+e.message);})' +
-    '.guardarAseoManual({idProp:parts[0],propiedad:parts[1],precio:parseInt(document.getElementById("precio").value)||0,' +
-    'acceso:parts[3]||"",checkout:co,noches:parseInt(document.getElementById("noches").value)||1,' +
-    'aseadora:document.getElementById("aseadora").value,notas:document.getElementById("notas").value});' +
-    '}<\/script></body></html>';
-
-  SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createHtmlOutput(html).setWidth(420).setHeight(510),
-    '➕ Agregar Aseo Manual'
-  );
-}
-
-function guardarAseoManual(data) {
-  const ss   = getSS();
-  let   hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja) hoja = crearHojaAseos();
-
-  // Generar código único MANUAL-NNN
-  const existentes = hoja.getLastRow() > 1
-    ? hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues().flat().map(String)
-    : [];
-  const manuales = existentes.filter(c => c.startsWith('MANUAL-'));
-  const codigo   = 'MANUAL-' + String(manuales.length + 1).padStart(3, '0');
-
-  // Convertir fecha yyyy-MM-dd → dd/MM/yyyy
-  const p  = data.checkout.split('-');
-  const checkoutStr = p[2] + '/' + p[1] + '/' + p[0];
-
-  // Calcular check-in restando noches
-  const coDate = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-  const ciDate = new Date(coDate.getTime() - data.noches * 86400000);
-  const checkinStr = String(ciDate.getDate()).padStart(2,'0') + '/' +
-                     String(ciDate.getMonth()+1).padStart(2,'0') + '/' + ciDate.getFullYear();
-
-  const fila = [
-    codigo, data.idProp, data.propiedad,
-    checkinStr, checkoutStr, data.noches,
-    data.aseadora || '', 'Pendiente', data.precio,
-    data.notas || '', data.acceso || '', '', ''
-  ];
-
-  const fi = hoja.getLastRow() + 1;
-  hoja.getRange(fi, 1, 1, 13).setValues([fila]);
-  hoja.getRange(fi, 4, 1, 2).setNumberFormat('@');
-  hoja.getRange(fi, 9, 1, 1).setNumberFormat('$#,##0');
-  hoja.getRange(fi, 1, 1, 13)
-    .setBackground('#fff9e6').setFontFamily('Arial').setFontSize(10);
-
-  getSS()
-    .toast('✅ Aseo manual agregado: ' + codigo, 'Listo', 5);
-  return '✅ Aseo manual agregado con código ' + codigo;
-}
-
-// ============================================================
-// TRIGGERS
-// ============================================================
 
 function crearTriggersAutomaticos() {
-  for (const t of ScriptApp.getProjectTriggers()) ScriptApp.deleteTrigger(t);
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var t = 0; t < triggers.length; t++) ScriptApp.deleteTrigger(triggers[t]);
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().everyHours(6).create();
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
-  // Corre a las 10 PM — requiere que la zona horaria del proyecto sea America/Bogota
-  // (verificar en Apps Script → Configuración del proyecto)
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
-  getSS().toast("✅ Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
+  getSS().toast("Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
 }
 
 
 // ============================================================
-// HOJA PERSONAL — crear/verificar (ejecutar UNA vez)
+// API — getAllAseos + getAseosPorAseadora
 // ============================================================
-
-function crearHojaPersonal() {
-  const ss = getSS();
-  const NOMBRE_HOJA = "👩 Personal";
-
-  // Si ya existe, no recrear
-  let hoja = ss.getSheetByName(NOMBRE_HOJA);
-  if (hoja) {
-    getSS().toast("La hoja ya existe.", NOMBRE_HOJA, 4);
-    return;
-  }
-
-  hoja = ss.insertSheet(NOMBRE_HOJA);
-
-  // Encabezados
-  const enc = ["Activa", "Nombre", "PIN", "Email", "Formulario", "Calendario", "Teléfono"];
-  hoja.getRange(1, 1, 1, enc.length).setValues([enc])
-    .setBackground("#1a1a2e").setFontColor("#ffffff")
-    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
-  [70, 120, 80, 220, 280, 220, 140].forEach((w, i) => hoja.setColumnWidth(i + 1, w));
-  hoja.setFrozenRows(1);
-
-  // Datos actuales (migrados desde CONFIG)
-  const datos = [
-    [true,  "Ana",      "1234", "ayarsakarina@gmail.com",          "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
-    [true,  "Fernanda", "5678", "",                                 "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
-    [true,  "Claudia",  "9012", "Cpatriciamonterrozalopez@gmail.com", "https://forms.gle/QABmtCwHybwb59vH9", "", ""],
-  ];
-  hoja.getRange(2, 1, datos.length, enc.length).setValues(datos);
-
-  // Checkbox en col A
-  hoja.getRange("A2:A100").setDataValidation(
-    SpreadsheetApp.newDataValidation().requireCheckbox().build()
-  );
-
-  // Formato visual
-  for (let i = 0; i < datos.length; i++) {
-    hoja.getRange(i + 2, 1, 1, enc.length)
-      .setBackground(i % 2 === 0 ? "#f8f9fa" : "#ffffff")
-      .setFontFamily("Arial").setFontSize(10);
-  }
-  hoja.getRange(2, 3, datos.length, 1).setNumberFormat("@"); // PIN como texto
-
-  getSS().toast("✅ Hoja Personal creada con 3 empleadas.", NOMBRE_HOJA, 6);
-  Logger.log("Hoja Personal creada OK");
-}
-
-// ============================================================
-// WEB APP — doPost (API JSON para el frontend)
-// ============================================================
-
-function respond(ok, data, error) {
-  var payload = { ok: ok };
-  if (data !== undefined && data !== null) payload.data = data;
-  if (error) payload.error = String(error);
-  return ContentService
-    .createTextOutput(JSON.stringify(payload))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  try {
-    var body = JSON.parse(e.postData.contents);
-    var action = body.action || '';
-
-    if (action === 'getPersonal') {
-      var p = getPersonal().map(function(u) {
-        return { nombre: u.nombre, rol: u.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora' };
-      });
-      return respond(true, p);
-    }
-
-    if (action === 'login') {
-      var ok = loginAseadora(body.nombre, body.pin);
-      if (!ok) return respond(false, null, 'PIN incorrecto');
-      var personal = getPersonal();
-      var user = personal.filter(function(p) { return p.nombre.toLowerCase() === String(body.nombre).trim().toLowerCase(); })[0];
-      var rol = user && user.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora';
-      return respond(true, { nombre: String(body.nombre).trim(), rol: rol, pin: body.pin });
-    }
-
-    if (action === 'getDatos') {
-      var nombre = body.nombre || '';
-      var rol = body.rol || 'aseadora';
-      var personal2 = getPersonal().map(function(u) {
-        return { nombre: u.nombre, rol: u.nombre.toLowerCase() === 'admin' ? 'admin' : 'aseadora', pin: u.pin, email: u.email, tel: u.telefono || '' };
-      });
-      var props = getPropiedades().map(function(p) {
-        return { id: p.id, nombre: p.nombre, precio: p.precioAseoInterno, acceso: p.acceso };
-      });
-      var aseos = rol === 'admin' ? getAllAseos() : getAseosPorAseadora(nombre);
-      return respond(true, { personal: personal2, propiedades: props, aseos: aseos });
-    }
-
-    if (action === 'completar') {
-      var result = finalizarAseo(body.codigo, body.nombre);
-      return respond(result.ok, null, result.ok ? null : result.msg);
-    }
-
-    return respond(false, null, 'Acción desconocida: ' + action);
-  } catch(err) {
-    return respond(false, null, err.message);
-  }
-}
 
 function getAllAseos() {
   var ss = getSS();
@@ -1124,11 +1082,11 @@ function getAllAseos() {
       checkin:   disp[i][0] || fechaToStr(r[3]),
       checkout:  disp[i][1] || fechaToStr(r[4]),
       noches:    Number(r[5]) || 0,
-      asignada:  String(r[6] || ''),
-      estado:    String(r[7] || ''),
+      asignada:  String(r[6] || ""),
+      estado:    String(r[7] || ""),
       precio:    Number(r[8]) || 0,
-      notas:     String(r[9] || ''),
-      acceso:    String(r[10] || ''),
+      notas:     String(r[9] || ""),
+      acceso:    String(r[10] || ""),
     });
   }
   return result;
@@ -1137,3 +1095,72 @@ function getAllAseos() {
 function getAseosPorAseadora(nombre) {
   return getAllAseos().filter(function(a) { return a.asignada === nombre; });
 }
+
+// ============================================================
+// SETUP helpers (correr UNA VEZ para poblar datos)
+// ============================================================
+
+function setupInicial() {
+  llenarTodo();
+}
+
+function debugSheets() {
+  var ss = getSS();
+  var sheets = ss.getSheets();
+  var names = sheets.map(function(s) { return s.getName() + '(' + s.getLastRow() + ')'; });
+  Logger.log(names.join(', '));
+}
+
+function llenarTodo() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName("Personal");
+  if (hoja && hoja.getLastRow() < 2) {
+    var datos = [
+      [true, "Ana", "1234", "ayarsakarina@gmail.com", "", "", ""],
+      [true, "Fernanda", "5678", "", "", "", ""],
+      [true, "Claudia", "9012", "Cpatriciamonterrozalopez@gmail.com", "", "", ""],
+      [true, "Admin", "2025", "", "", "", ""]
+    ];
+    hoja.getRange(2, 1, datos.length, 7).setValues(datos);
+    Logger.log("Personal: " + datos.length + " rows");
+  } else { Logger.log("Personal: " + (hoja ? "already has data" : "not found")); }
+  var master = ss.getSheetByName("Todas las Reservas");
+  var aseos = ss.getSheetByName("Todos los Aseos");
+  if (master && aseos && aseos.getLastRow() < 2 && master.getLastRow() > 1) {
+    var mData = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
+    var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
+    var filas = [];
+    for (var i = 0; i < mData.length; i++) {
+      var r = mData[i];
+      if (!r[0]) continue;
+      filas.push([String(r[0]),String(r[1]),String(r[2]),mDisp[i][0],mDisp[i][1],Number(r[5])||0,String(r[7]||""),"Pendiente",Number(r[8])||0,String(r[9]||""),String(r[10]||""),"",""]);
+    }
+    if (filas.length > 0) aseos.getRange(2, 1, filas.length, 13).setValues(filas);
+    Logger.log("Aseos: " + filas.length + " rows");
+  } else { Logger.log("Aseos: " + (aseos ? "already has data or no master" : "not found")); }
+}
+
+function fixSheetNames() {
+  var ss = getSS();
+  var sheets = ss.getSheets();
+  var renames = [
+    ["Todas las Reservas", "Todas las Reservas"],
+    ["Todos los Aseos", "Todos los Aseos"],
+    ["Propiedades", "Propiedades"],
+    ["Personal", "Personal"],
+    ["Videos Aseos", "Videos Aseos"]
+  ];
+  for (var i = 0; i < sheets.length; i++) {
+    var name = sheets[i].getName();
+    for (var j = 0; j < renames.length; j++) {
+      if (name.indexOf(renames[j][0]) !== -1 && name !== renames[j][1]) {
+        Logger.log("Renaming: " + name + " -> " + renames[j][1]);
+        try { sheets[i].setName(renames[j][1]); } catch(e) { Logger.log("Error: " + e.message); }
+        break;
+      }
+    }
+  }
+  Logger.log("Done renaming");
+}
+
+function getSpreadsheetId() { Logger.log(getSS().getId()); }
