@@ -106,6 +106,23 @@ function doPost(e) {
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
     if (action === "listarVideos")        return handleListarVideos(body);
+    if (action === "inspectAseos") {
+      var hh = getSS().getSheetByName(CONFIG.hojaAseos);
+      var lc = hh.getLastColumn();
+      return respond(true, {
+        lastCol: lc,
+        headers: hh.getRange(1, 1, 1, lc).getValues()[0],
+        hasFilter: !!hh.getFilter(),
+      });
+    }
+    if (action === "runCrearFiltro") {
+      crearFiltroAseos();
+      return respond(true, { done: true });
+    }
+    if (action === "runMigrarForm") {
+      migrarFormJsonAColumnas();
+      return respond(true, { done: true });
+    }
 
     if (action === "debug") {
       var ss2 = getSS();
