@@ -277,9 +277,20 @@ function App() {
       : x));
     setCompletarOpen(false); setOpenId(null);
 
-    // Save to Google Sheets
-    gasPost({ action: 'completar', codigo: a.codigo, nombre: session.nombre })
-      .catch(function() {});
+    // Save full form to Google Sheets (cols 14-20 via handleCompletarAseo)
+    gasPost({
+      action:    'completarAseo',
+      codigo:    a.codigo,
+      nombre:    session.nombre,
+      notas:     payload.notas || '',
+      entrada:   payload.entrada || '',
+      salida:    payload.salida || '',
+      revision:       payload.revision || null,
+      reposicion:     payload.reposicion || null,
+      funcionamiento: payload.funcionamiento || null,
+      reporte:   payload.reporte || '',
+      videoLink: (payload.file && payload.file.name) || '',
+    }).catch(function() {});
 
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
@@ -291,6 +302,20 @@ function App() {
       : x));
     setReassignOpen(false);
     showToast(who ? 'Asignado a ' + who : 'Aseo sin asignar');
+
+    // Persist to spreadsheet (Fase 6)
+    gasPost({ action: 'asignarAseo', codigo: a.codigo, aseadora: who || '' })
+      .then(function(res) {
+        if (!res || !res.ok) {
+          // Roll back UI on failure
+          setAseos(list => list.map(x => x.codigo === a.codigo ? { ...x, asignada: a.asignada || null } : x));
+          showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(function() {
+        setAseos(list => list.map(x => x.codigo === a.codigo ? { ...x, asignada: a.asignada || null } : x));
+        showToast('Error de conexión, no se guardó');
+      });
   }
   function openEditProp(id) { setEditProp(props.find(p => p.id === id) || null); setEditPropOpen(true); }
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
