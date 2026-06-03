@@ -76,13 +76,29 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                 <span className="detail-value">{a.direccion}</span>
               </div>
             </div>
-            <div className="detail-row">
-              <Icon name="key" size={16} />
-              <div className="keypair">
-                <span className="detail-label">Acceso</span>
-                <span className="detail-value">Lockbox {a.claves.lockbox} · {a.claves.porteria}</span>
-              </div>
-            </div>
+            {(() => {
+              // Mostrar el bloque de acceso de la propiedad (claves, lockbox,
+              // porteria, …) tal cual lo capturó Mike en el spreadsheet,
+              // partido por '|' a una línea cada parte. Excluye la dirección
+              // porque ya se renderiza arriba en su propia fila.
+              const accesoStr = (a.claves && a.claves.acceso) || '';
+              const parts = accesoStr.split('|')
+                .map(s => s.trim())
+                .filter(s => s && !/direcci[oó]n/i.test(s));
+              const fallback = [a.claves && a.claves.lockbox && ('Lockbox ' + a.claves.lockbox), a.claves && a.claves.porteria].filter(Boolean).join(' · ');
+              if (parts.length === 0 && !fallback) return null;
+              return (
+                <div className="detail-row">
+                  <Icon name="key" size={16} />
+                  <div className="keypair">
+                    <span className="detail-label">Acceso</span>
+                    {parts.length > 0
+                      ? parts.map((p, i) => <span key={i} className="detail-value" style={{ display: 'block' }}>{p}</span>)
+                      : <span className="detail-value">{fallback}</span>}
+                  </div>
+                </div>
+              );
+            })()}
             {a.notas && (
               <div className="detail-row">
                 <Icon name="notes" size={16} />
