@@ -1901,8 +1901,10 @@ function recuperarLinksVideos() {
   var ss = getSS();
   var raiz = getCarpetaRaiz();
 
-  // 1. Construir mapa filename → fileId recorriendo TODOS los subfolders
-  var mapa = {};
+  // 1. Construir dos mapas: por filename exacto Y por código de aseo
+  // (extraído del filename renombrado tipo "2026-06-03_HM5H3SSPDN_Ana_video.mov")
+  var mapName = {};
+  var mapCode = {};
   var subs = raiz.getFolders();
   var foldersWalked = 0;
   while (subs.hasNext()) {
@@ -1912,15 +1914,27 @@ function recuperarLinksVideos() {
     while (files.hasNext()) {
       var f = files.next();
       var name = f.getName();
-      // Permitir múltiples archivos con el mismo nombre — quedarse con el más reciente
-      if (!mapa[name] || mapa[name].date < f.getLastUpdated().getTime()) {
-        mapa[name] = { id: f.getId(), date: f.getLastUpdated().getTime() };
-        // Compartir mientras estamos aquí
-        try { compartirAnyoneViewer(f); } catch(e) {}
+      var entry = { id: f.getId(), date: f.getLastUpdated().getTime(), name: name };
+      try { compartirAnyoneViewer(f); } catch(e) {}
+
+      // Por nombre exacto
+      if (!mapName[name] || mapName[name].date < entry.date) mapName[name] = entry;
+
+      // Por código: extraer HM[A-Z0-9]+ o MAN-?\d+ del nombre
+      var m = name.match(/(HM[A-Z0-9]{6,}|MAN-?\d+)/);
+      if (m) {
+        var cod = m[1];
+        if (!mapCode[cod] || mapCode[cod].date < entry.date) mapCode[cod] = entry;
       }
     }
   }
-  Logger.log("Map Drive: " + Object.keys(mapa).length + " files, " + foldersWalked + " folders");
+  Logger.log("Map Drive: byName=" + Object.keys(mapName).length + " byCode=" + Object.keys(mapCode).length + " folders=" + foldersWalked);
+
+  function resolveEntry(codigo, currentVal) {
+    if (mapName[currentVal]) return mapName[currentVal];
+    if (codigo && mapCode[codigo]) return mapCode[codigo];
+    return null;
+  }
 
   var stats = { aseos: 0, videos: 0, notFound: 0 };
 
@@ -1930,6 +1944,7 @@ function recuperarLinksVideos() {
     var lr = ha.getLastRow();
     var vals = ha.getRange(2, 37, lr - 1, 1).getValues();
     var fms  = ha.getRange(2, 37, lr - 1, 1).getFormulas();
+    var codAseos = ha.getRange(2, 1, lr - 1, 1).getValues();
     var ups = [];
     var any = false;
     for (var i = 0; i < vals.length; i++) {
@@ -1939,8 +1954,10 @@ function recuperarLinksVideos() {
         ups.push([vals[i][0]]);
         continue;
       }
-      if (mapa[cur]) {
-        var url = "https://drive.google.com/file/d/" + mapa[cur].id + "/view";
+      var codigoRow = String(codAseos[i][0] || "");
+      var match = resolveEntry(codigoRow, cur);
+      if (match) {
+        var url = "https://drive.google.com/file/d/" + match.id + "/view";
         ups.push([buildHyperlink(url, "Ver video")]);
         any = true;
         stats.aseos++;
@@ -1968,9 +1985,11 @@ function recuperarLinksVideos() {
         ups2.push([vals2[j][0]]);
         continue;
       }
-      if (mapa[cur2]) {
-        var url2 = "https://drive.google.com/file/d/" + mapa[cur2].id + "/view";
-        ups2.push([buildHyperlink(url2, "Ver video · " + codigos2[j][0])]);
+      var codV = String(codigos2[j][0] || "");
+      var match2 = resolveEntry(codV, cur2);
+      if (match2) {
+        var url2 = "https://drive.google.com/file/d/" + match2.id + "/view";
+        ups2.push([buildHyperlink(url2, "Ver video · " + codV)]);
         any2 = true;
         stats.videos++;
       } else {
