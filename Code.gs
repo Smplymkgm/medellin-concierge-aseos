@@ -694,12 +694,125 @@ function handleAsignarAseo(body) {
       }
     }
 
-    if (aseadora) notificarHubspot(aseoInfo, aseadora);
+    if (aseadora) {
+      notificarHubspot(aseoInfo, aseadora);
+      try { notificarAsignacionEmail(aseoInfo, aseadora, datos[i]); } catch(e) { Logger.log("Email asignación: " + e.message); }
+    }
 
     return respond(true, null);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }
+}
+
+// ============================================================
+// NOTIFICACIONES POR EMAIL
+// ============================================================
+// Cuando se asigna un aseo, la aseadora recibe un email con los detalles.
+// La cuenta del owner del script (executeAs USER_DEPLOYING) envía. Quota
+// de Gmail: 100 emails/día en cuenta personal, 1500/día en Workspace.
+
+function notificarAsignacionEmail(aseo, aseadora, row) {
+  if (!aseo || !aseadora) return;
+  var personal = getPersonal();
+  var emp = null;
+  for (var i = 0; i < personal.length; i++) {
+    if (personal[i].nombre.toLowerCase() === String(aseadora).toLowerCase()) {
+      emp = personal[i]; break;
+    }
+  }
+  if (!emp || !emp.email) {
+    Logger.log("Sin email para " + aseadora + " — notificación saltada");
+    return;
+  }
+
+  var acceso = row && row[10] ? String(row[10]) : "";
+  var notas  = row && row[9]  ? String(row[9])  : "";
+
+  var subject = "Te asignaron un aseo: " + (aseo.propiedad || aseo.codigo);
+  var body = "Hola " + aseadora + ",\n\n" +
+             "Te asignaron un aseo nuevo.\n\n" +
+             "Propiedad: " + (aseo.propiedad || "—") + "\n" +
+             "Código: " + (aseo.codigo || "—") + "\n" +
+             "Fecha del aseo: " + (aseo.checkout || "—") + "\n" +
+             (notas ? "Notas: " + notas + "\n" : "") +
+             (acceso ? "Acceso: " + acceso + "\n" : "") +
+             "\nAbre la app para ver más detalles:\n" +
+             "https://smplymkgm.github.io/medellin-concierge-aseos/Index.html\n\n" +
+             "— Medellín Concierge";
+
+  MailApp.sendEmail({
+    to: emp.email,
+    subject: subject,
+    body: body,
+    name: "Medellín Concierge",
+  });
+  Logger.log("Email asignación enviado a " + emp.email + " (" + aseo.codigo + ")");
+}
+
+function notificarAdminAsignacionesPendientes() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return;
+
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow() - 1, 2).getDisplayValues();
+
+  var pendientes = [];
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    var asignada = String(r[6] || "").trim();
+    var estado   = String(r[7] || "");
+    if (asignada) continue;
+    if (estado === "Completado" || estado === "Cancelado") continue;
+    var checkoutStr = disp[i][1] || fechaToStr(r[4]);
+    var checkout    = fechaADate(checkoutStr);
+    if (!checkout) continue;
+    if (!sameDayDate(checkout, hoy)) continue;
+    pendientes.push({
+      codigo: String(r[0]),
+      propiedad: String(r[2]),
+      checkout: checkoutStr,
+    });
+  }
+  if (!pendientes.length) {
+    Logger.log("notificarAdminAsignacionesPendientes: 0 pendientes hoy");
+    return;
+  }
+
+  // Buscar email(s) de admin en Personal
+  var personal = getPersonal();
+  var adminEmails = [];
+  for (var j = 0; j < personal.length; j++) {
+    if (personal[j].nombre.toLowerCase() === "admin" && personal[j].email) {
+      adminEmails.push(personal[j].email);
+    }
+  }
+  if (!adminEmails.length) {
+    Logger.log("Sin email de Admin en hoja Personal — saltado");
+    return;
+  }
+
+  var subject = "[Medellín Concierge] " + pendientes.length + " aseo(s) sin asignar hoy";
+  var body = "Tienes " + pendientes.length + " aseo(s) sin aseadora asignada para hoy:\n\n";
+  for (var k = 0; k < pendientes.length; k++) {
+    body += "• " + pendientes[k].propiedad + "  (" + pendientes[k].codigo + ", " + pendientes[k].checkout + ")\n";
+  }
+  body += "\nAbre la app para asignarlos:\n" +
+          "https://smplymkgm.github.io/medellin-concierge-aseos/Index.html\n";
+
+  MailApp.sendEmail({
+    to: adminEmails.join(","),
+    subject: subject,
+    body: body,
+    name: "Medellín Concierge",
+  });
+  Logger.log("Email admin enviado: " + pendientes.length + " pendientes");
+}
+
+function sameDayDate(a, b) {
+  return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 // ============================================================
@@ -1447,7 +1560,8 @@ function crearTriggersAutomaticos() {
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().everyHours(6).create();
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
-  getSS().toast("Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
+  ScriptApp.newTrigger("notificarAdminAsignacionesPendientes").timeBased().atHour(7).everyDays(1).create();
+  getSS().toast("Triggers creados (Airbnb 6h · Calendar 2h · Auto-completar 10PM · Admin pendientes 7AM)", "Triggers", 6);
 }
 
 

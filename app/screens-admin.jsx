@@ -28,10 +28,28 @@ function AseosScreen({ ctx }) {
   const groups = groupByDay(list);
   const active = f.estado !== 'all' || f.aseadora || f.desde || f.hasta;
 
+  // Alerta de aseos sin asignar HOY (independiente de los filtros)
+  const sinAsignarHoy = ctx.aseos.filter(a =>
+    !a.asignada && a.status !== 'done' && sameDay(a.checkout, TODAY)
+  );
+
   return (
     <div className="scrollarea">
       <AppBar title="Aseos" subtitle={list.length + ' programados'} onLogout={ctx.logout}
         actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
+
+      {sinAsignarHoy.length > 0 && (
+        <div className="row gap-base" style={{ margin: '4px 16px 8px', padding: '10px 12px', background: 'rgba(196,98,45,0.10)', border: '1px solid var(--accent)', borderRadius: 10, cursor: 'pointer' }}
+          onClick={() => ctx.setFilter({ ...f, estado: 'unassigned', desde: '', hasta: '' })}>
+          <Icon name="alert" size={18} style={{ color: 'var(--accent)' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="body" style={{ fontWeight: 600 }}>
+              {sinAsignarHoy.length} aseo{sinAsignarHoy.length === 1 ? '' : 's'} sin asignar hoy
+            </div>
+            <div className="caption sec">Toca para filtrar</div>
+          </div>
+        </div>
+      )}
 
       <div className="filters">
         <div className="chips">
