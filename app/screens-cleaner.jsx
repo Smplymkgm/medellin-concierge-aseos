@@ -145,9 +145,13 @@ function CalendarioScreen({ ctx, role }) {
         <div className="cal-daylabel label sec">{ctx.calSel ? fmtDate(ctx.calSel) : 'Selecciona un día'}</div>
         {ctx.calSel && dayItems.length === 0 && <div className="caption" style={{ paddingBottom: 16 }}>Sin aseos este día</div>}
         {dayItems.map(a => (
-          <CompactCard key={a.codigo} aseo={a} onClick={() => ctx.goToAseo(a)} />
+          <AseoCard key={a.codigo} aseo={a} role={role}
+            open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
+            onComplete={ctx.openCompletar}
+            onReassign={role === 'admin' ? ctx.openReassign : undefined}
+            onFinalizarSinForm={role === 'admin' ? ctx.doFinalizarSinForm : undefined} />
         ))}
-        <div style={{ height: 16 }}></div>
+        <div style={{ height: 80 }}></div>
       </div>
     </div>
   );

@@ -451,22 +451,34 @@ function AgregarAseoSheet({ open, onClose, onAdd }) {
 }
 
 /* ---- Crear / editar propiedad: maneja todos los datos del registro ---- */
+const TIPOS_ACCESO = [
+  { value: '',              label: 'Sin acceso' },
+  { value: 'chapa_digital', label: 'Chapa digital' },
+  { value: 'llave_fisica',  label: 'Llave física' },
+  { value: 'caja_llaves',   label: 'Caja de llaves' },
+];
+
 function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
   const isEdit = !!prop;
   const [form, setForm] = useStateS(null);
   useEffectS(() => {
     if (!open) return;
+    const struct = (prop && prop.accesoEstructurado) || {};
+    const ext = struct.externo || {};
+    const intn = struct.interno || {};
     if (prop) setForm({
-      id: prop.id, nombre: prop.nombre, barrio: prop.barrio || '', direccion: prop.direccion || '',
+      id: prop.id, nombre: prop.nombre, direccion: struct.direccion || prop.direccion || '',
       precio: prop.precio || 0,
-      lockbox: (prop.claves && prop.claves.lockbox) || '',
-      wifi: (prop.claves && prop.claves.wifi) || '',
-      porteria: (prop.claves && prop.claves.porteria) || '',
-      ical: prop.ical || ('https://airbnb.com/calendar/ical/' + (prop.id || '').replace('#','') + '.ics'),
+      ext_tipo: ext.tipo || '', ext_valor: ext.valor || '',
+      int_tipo: intn.tipo || '', int_valor: intn.valor || '',
+      notas: struct.notas || '',
+      acceso: (prop.claves && prop.claves.acceso) || '',
+      ical: prop.ical || '',
     });
     else setForm({
-      id: nextPropId(), nombre: '', barrio: '', direccion: '', precio: 50000,
-      lockbox: '', wifi: '', porteria: '', ical: '',
+      id: nextPropId(), nombre: '', direccion: '', precio: 50000,
+      ext_tipo: '', ext_valor: '', int_tipo: '', int_valor: '', notas: '',
+      acceso: '', ical: '',
     });
   }, [open, prop]);
 
@@ -474,24 +486,42 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
   if (!form) return <Sheet open={open} onClose={onClose} title={title} height="88%"></Sheet>;
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const precioNum = parseInt(String(form.precio).replace(/\D/g, '')) || 0;
-  const canSave = form.nombre.trim() && form.direccion.trim();
+  const canSave = form.nombre.trim();
 
   function save() {
+    const accesoEstructurado = {
+      direccion: form.direccion.trim(),
+      externo:   form.ext_tipo || form.ext_valor.trim() ? { tipo: form.ext_tipo, valor: form.ext_valor.trim() } : null,
+      interno:   form.int_tipo || form.int_valor.trim() ? { tipo: form.int_tipo, valor: form.int_valor.trim() } : null,
+      notas:     form.notas.trim() || '',
+    };
     onSave(isEdit ? prop.id : null, {
       id: form.id.trim() || nextPropId(),
       nombre: form.nombre.trim(),
-      barrio: form.barrio.trim(),
       direccion: form.direccion.trim(),
       precio: precioNum,
-      claves: { lockbox: form.lockbox.trim(), wifi: form.wifi.trim(), porteria: form.porteria.trim() },
+      acceso: form.acceso.trim(),
+      accesoEstructurado: accesoEstructurado,
       ical: form.ical.trim(),
     });
   }
 
   const footer = <button className="btn btn-primary btn-block btn-lg" disabled={!canSave} onClick={save}>{isEdit ? 'Guardar cambios' : 'Crear propiedad'}</button>;
 
+  function TipoSelect({ value, onChange }) {
+    return (
+      <div className="select">
+        <select value={value} onChange={e => onChange(e.target.value)}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--bg-surface)', fontFamily: 'inherit', fontSize: 14, appearance: 'none' }}>
+          {TIPOS_ACCESO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <Icon name="chevron-down" size={18} className="chev" />
+      </div>
+    );
+  }
+
   return (
-    <Sheet open={open} onClose={onClose} title={title} footer={footer} height="88%">
+    <Sheet open={open} onClose={onClose} title={title} footer={footer} height="92%">
       <div className="row gap-base" style={{ marginBottom: 20 }}>
         <div className="prop-thumb" style={{ width: 44, height: 44, fontSize: 14 }}>{propInitials(form.nombre) || '—'}</div>
         <div className="caption">{isEdit ? 'Editando registro · ' + prop.id : 'Nuevo registro · ' + form.id}</div>
@@ -499,51 +529,66 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
 
       <div className="form-group">
         <label className="label">Nombre de la propiedad</label>
-        <input className="text-input" value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Ej. Luxury 3BR Provenza" />
+        <input className="text-input" value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Ej. Manila Luxury Suites 301" />
       </div>
 
-      <div className="row gap-base" style={{ alignItems: 'flex-start' }}>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label className="label">Código</label>
-          <input className="text-input" value={form.id} onChange={e => set('id', e.target.value)} placeholder="#0000" />
-        </div>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label className="label">Barrio</label>
-          <input className="text-input" value={form.barrio} onChange={e => set('barrio', e.target.value)} placeholder="El Poblado" />
-        </div>
+      <div className="form-group">
+        <label className="label">Código</label>
+        <input className="text-input" value={form.id} onChange={e => set('id', e.target.value)} placeholder="#0000" />
       </div>
 
       <div className="form-group">
         <label className="label">Dirección</label>
-        <input className="text-input" value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Cra 00 #00-00" />
+        <input className="text-input" value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Cra 00 #00-00, suit 0" />
       </div>
 
       <div className="form-group">
         <label className="label">Precio aseo (COP)</label>
         <input className="text-input" inputMode="numeric" value={fmtCOP(precioNum)} onChange={e => set('precio', e.target.value)} />
-        <div className="caption" style={{ marginTop: 6 }}>Express (40% menos): {fmtCOP(Math.round(precioNum * 0.6))}</div>
       </div>
 
       <div className="divider"></div>
-      <div className="section-title" style={{ marginBottom: 12 }}><Icon name="key" size={16} /><span className="h3">Claves de acceso</span></div>
-
-      <div className="form-group">
-        <label className="label">Lockbox</label>
-        <input className="text-input" value={form.lockbox} onChange={e => set('lockbox', e.target.value)} placeholder="0000" />
-      </div>
-      <div className="form-group">
-        <label className="label">WiFi (red / contraseña)</label>
-        <input className="text-input" value={form.wifi} onChange={e => set('wifi', e.target.value)} placeholder="Red / clave" />
-      </div>
-      <div className="form-group">
-        <label className="label">Portería / ubicación</label>
-        <input className="text-input" value={form.porteria} onChange={e => set('porteria', e.target.value)} placeholder="Torre · piso · apto" />
+      <div className="section-title" style={{ marginBottom: 12 }}><Icon name="key" size={16} /><span className="h3">Acceso externo</span></div>
+      <div className="caption" style={{ marginBottom: 12 }}>Puerta del edificio o entrada principal del apto.</div>
+      <div className="row gap-base" style={{ alignItems: 'flex-start' }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Tipo</label>
+          <TipoSelect value={form.ext_tipo} onChange={v => set('ext_tipo', v)} />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Clave / código / ubicación</label>
+          <input className="text-input" value={form.ext_valor} onChange={e => set('ext_valor', e.target.value)} placeholder="123456" />
+        </div>
       </div>
 
       <div className="divider"></div>
-      <div className="form-group" style={{ marginBottom: 0 }}>
+      <div className="section-title" style={{ marginBottom: 12 }}><Icon name="key" size={16} /><span className="h3">Acceso interno</span></div>
+      <div className="caption" style={{ marginBottom: 12 }}>Suite o habitación. Opcional si la propiedad es un apto completo.</div>
+      <div className="row gap-base" style={{ alignItems: 'flex-start' }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Tipo</label>
+          <TipoSelect value={form.int_tipo} onChange={v => set('int_tipo', v)} />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Clave / código / ubicación</label>
+          <input className="text-input" value={form.int_valor} onChange={e => set('int_valor', e.target.value)} placeholder="0000" />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="label">Notas de acceso (opcional)</label>
+        <textarea className="textarea" rows="2" value={form.notas} onChange={e => set('notas', e.target.value)} placeholder="Llaves en porteria, instrucciones, etc." />
+      </div>
+
+      <div className="divider"></div>
+      <div className="form-group">
         <label className="label">URL iCal (Airbnb)</label>
         <input className="text-input" value={form.ical} onChange={e => set('ical', e.target.value)} placeholder="https://airbnb.com/calendar/ical/…" />
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Acceso (texto libre, legacy)</label>
+        <textarea className="textarea" rows="2" value={form.acceso} onChange={e => set('acceso', e.target.value)} placeholder="Conservado para compatibilidad. No requerido si llenaste las secciones de arriba." />
       </div>
     </Sheet>
   );

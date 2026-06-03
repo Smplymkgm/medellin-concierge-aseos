@@ -55,6 +55,11 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
           </div>
           <div className="row gap-base" style={{ marginTop: 10, flexWrap: 'wrap' }}>
             <StatusBadge status={a.status} />
+            {a.status === 'done' && (
+              <span className={'form-badge ' + (a.formFilled ? 'ok' : 'miss')}>
+                {a.formFilled ? '✓ Form completado' : '⚠ Form pendiente'}
+              </span>
+            )}
             {role === 'admin' && (
               <span className="assignee">
                 {a.asignada
@@ -77,24 +82,56 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
               </div>
             </div>
             {(() => {
-              // Mostrar el bloque de acceso de la propiedad (claves, lockbox,
-              // porteria, …) tal cual lo capturó Mike en el spreadsheet,
-              // partido por '|' a una línea cada parte. Excluye la dirección
-              // porque ya se renderiza arriba en su propia fila.
+              const tipoLabels = {
+                chapa_digital: 'Chapa digital',
+                llave_fisica:  'Llave física',
+                caja_llaves:   'Caja de llaves',
+              };
+              const struct = a.accesoEstructurado;
+              // Si hay estructura nueva, mostrar Externo / Interno separados
+              if (struct && (struct.externo || struct.interno || struct.notas)) {
+                const rows = [];
+                if (struct.externo && (struct.externo.tipo || struct.externo.valor)) {
+                  rows.push({ label: 'Acceso externo', tipo: tipoLabels[struct.externo.tipo] || struct.externo.tipo, valor: struct.externo.valor });
+                }
+                if (struct.interno && (struct.interno.tipo || struct.interno.valor)) {
+                  rows.push({ label: 'Acceso interno', tipo: tipoLabels[struct.interno.tipo] || struct.interno.tipo, valor: struct.interno.valor });
+                }
+                return (
+                  <>
+                    {rows.map((r, i) => (
+                      <div className="detail-row" key={i}>
+                        <Icon name="key" size={16} />
+                        <div className="keypair">
+                          <span className="detail-label">{r.label}</span>
+                          <span className="detail-value">{[r.tipo, r.valor].filter(Boolean).join(' · ')}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {struct.notas && (
+                      <div className="detail-row">
+                        <Icon name="notes" size={16} />
+                        <div className="keypair">
+                          <span className="detail-label">Notas de acceso</span>
+                          <span className="detail-value">{struct.notas}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              }
+              // Fallback: texto libre del spreadsheet, partido por '|'
               const accesoStr = (a.claves && a.claves.acceso) || '';
               const parts = accesoStr.split('|')
                 .map(s => s.trim())
                 .filter(s => s && !/direcci[oó]n/i.test(s));
-              const fallback = [a.claves && a.claves.lockbox && ('Lockbox ' + a.claves.lockbox), a.claves && a.claves.porteria].filter(Boolean).join(' · ');
-              if (parts.length === 0 && !fallback) return null;
+              if (parts.length === 0) return null;
               return (
                 <div className="detail-row">
                   <Icon name="key" size={16} />
                   <div className="keypair">
                     <span className="detail-label">Acceso</span>
-                    {parts.length > 0
-                      ? parts.map((p, i) => <span key={i} className="detail-value" style={{ display: 'block' }}>{p}</span>)
-                      : <span className="detail-value">{fallback}</span>}
+                    {parts.map((p, i) => <span key={i} className="detail-value" style={{ display: 'block' }}>{p}</span>)}
                   </div>
                 </div>
               );

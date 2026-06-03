@@ -88,6 +88,9 @@ function transformAseos(apiAseos) {
       priority: isToday && !isDone,
       notas:    a.notas || '',
       precio:   a.precio || 0,
+      entrada:  a.entrada || '',
+      salida:   a.salida || '',
+      formFilled: !!a.formFilled,
     };
   });
 }
@@ -97,13 +100,16 @@ function transformProps(apiProps) {
   return (apiProps || []).map(function(p) {
     var partes = String(p.acceso || '').split('|').map(function(s) { return s.trim(); });
     var dir = partes.filter(function(s) { return s.toLowerCase().includes('dirección') || s.toLowerCase().includes('direccion'); })[0] || partes[partes.length - 1] || '';
+    var struct = p.accesoEstructurado || null;
+    var direcStruct = struct && struct.direccion;
     return {
       id:       p.id,
       nombre:   p.nombre,
       barrio:   '',
-      direccion: dir,
+      direccion: direcStruct || dir,
       precio:   p.precio || 0,
       claves:   { acceso: p.acceso || '' },
+      accesoEstructurado: struct,
     };
   });
 }
@@ -379,24 +385,59 @@ function App() {
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
   function doSaveProp(oldId, datos) {
     if (oldId == null) {
-      const nuevo = { id: datos.id, nombre: datos.nombre, barrio: datos.barrio, direccion: datos.direccion, precio: datos.precio, claves: { ...datos.claves }, ical: datos.ical };
+      // Alta (no implementada en backend desde la app). Mantener local.
+      const nuevo = {
+        id: datos.id, nombre: datos.nombre, barrio: '', direccion: datos.direccion,
+        precio: datos.precio,
+        claves: { acceso: datos.acceso || '' },
+        accesoEstructurado: datos.accesoEstructurado || null,
+        ical: datos.ical
+      };
       const next = [...props, nuevo];
       setLiveProps(next); setProps(next);
       setEditPropOpen(false);
       showToast('Propiedad creada · ' + datos.id);
       return;
     }
+
+    // Optimistic update local
+    const prev = props;
     const next = props.map(p => p.id === oldId
-      ? { ...p, ...datos, claves: { ...p.claves, ...(datos.claves || {}) } }
+      ? {
+          ...p,
+          nombre: datos.nombre,
+          direccion: datos.direccion,
+          precio: datos.precio,
+          claves: { ...p.claves, acceso: datos.acceso },
+          accesoEstructurado: datos.accesoEstructurado || null,
+        }
       : p);
     setLiveProps(next);
     setProps(next);
-    if (datos.id && datos.id !== oldId) {
-      setAseos(list => list.map(a => a.prop === oldId ? { ...a, prop: datos.id } : a));
-      setPropId(datos.id);
-    }
     setEditPropOpen(false);
-    showToast('Propiedad actualizada');
+    showToast('Guardando…');
+
+    // Persistir vía API
+    gasPost({
+      action: 'actualizarPropiedad',
+      id: oldId,
+      datos: {
+        nombre: datos.nombre,
+        precioAseo: datos.precio,
+        acceso: datos.acceso,
+        accesoEstructurado: datos.accesoEstructurado,
+        icalUrl: datos.ical,
+      },
+    }).then(res => {
+      if (res && res.ok) showToast('Propiedad actualizada');
+      else {
+        setLiveProps(prev); setProps(prev);
+        showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => {
+      setLiveProps(prev); setProps(prev);
+      showToast('Error de conexión, no se guardó');
+    });
   }
 
   function openAddCleaner() { setAddCleanerOpen(true); }
