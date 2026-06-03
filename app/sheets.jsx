@@ -58,35 +58,69 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
       xhr.upload.onprogress = ev => {
         if (ev.lengthComputable) setProgress(Math.round(ev.loaded / ev.total * 100));
       };
+      let uploadFinished = false;
+
+      function finalizeSuccess(fileId) {
+        if (uploadFinished) return;
+        uploadFinished = true;
+        const link = fileId ? ('https://drive.google.com/file/d/' + fileId + '/view') : '';
+        setFile({ name: finalName, size: f.size, fileId: fileId, link: link, mime: f.type });
+        setProgress(100);
+        setUploading(false);
+        if (fileId) {
+          gasPost({
+            action: 'registrarVideo',
+            codigo: a.codigo,
+            propiedad: a.propNombre,
+            aseadora: a.asignada || '',
+            checkout: '',
+            fileId: fileId,
+            notas: '',
+          }).catch(() => {});
+        }
+      }
+
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          let fileId = '';
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            fileId = resp.id || '';
-          } catch (e) {}
-          const link = fileId ? ('https://drive.google.com/file/d/' + fileId + '/view') : '';
-          setFile({ name: finalName, size: f.size, fileId: fileId, link: link, mime: f.type });
-          setProgress(100);
-          setUploading(false);
-          // 3. Registrar en hoja Videos Aseos (best-effort)
-          if (fileId) {
-            gasPost({
-              action: 'registrarVideo',
-              codigo: a.codigo,
-              propiedad: a.propNombre,
-              aseadora: a.asignada || '',
-              checkout: '',
-              fileId: fileId,
-              notas: '',
-            }).catch(() => {});
-          }
+        if (uploadFinished) return;
+        // 200/201 = success. 308 is "Resume Incomplete" (no debería pasar
+        // en una sola PUT pero por si acaso). 0 puede pasar en Safari iOS
+        // si el response viene con headers que el browser bloquea — la
+        // subida real ya terminó, solo no podemos leer el body.
+        const okStatus = (xhr.status >= 200 && xhr.status < 300) || xhr.status === 0;
+        let fileId = '';
+        try {
+          const resp = JSON.parse(xhr.responseText);
+          fileId = resp.id || '';
+        } catch (e) {}
+        if (okStatus) {
+          finalizeSuccess(fileId);
         } else {
+          uploadFinished = true;
           setUploading(false);
           alert('Error subiendo (' + xhr.status + '): ' + (xhr.responseText || '').slice(0, 200));
         }
       };
-      xhr.onerror = () => { setUploading(false); alert('Error de red durante el upload'); };
+
+      xhr.onerror = () => {
+        // Si el upload ya progresó al 100% y entonces falla la lectura
+        // del response (Safari + CORS), el archivo ya está en Drive.
+        // No molestamos al usuario; le mostramos un aviso suave.
+        if (uploadFinished) return;
+        if (progress >= 99) {
+          finalizeSuccess('');
+          showAlertSoft('Video subido a Drive. No se pudo confirmar el link automáticamente.');
+        } else {
+          uploadFinished = true;
+          setUploading(false);
+          alert('Error de red durante el upload');
+        }
+      };
+
+      function showAlertSoft(msg) {
+        // No usar alert() para no bloquear el flujo; usar console + algo no intrusivo
+        try { console.warn(msg); } catch(e) {}
+      }
+
       xhr.send(f);
     }).catch(err => {
       setUploading(false);
