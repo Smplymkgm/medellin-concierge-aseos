@@ -1274,8 +1274,24 @@ function crearFiltroAseos() {
     return;
   }
 
-  // Cuántas columnas activas tiene la hoja
-  var lastCol = Math.max(hoja.getLastColumn(), 13);
+  // Asegurar que las cols del form existan (puede que alguien corra esto
+  // antes de que se haya completado un aseo)
+  ensureAseosFormColumns(hoja);
+
+  // Limpieza: si una corrida vieja dejó la columna "Mes (Check-out)"
+  // en medio del esquema (cuando el form solo ocupaba hasta col 20),
+  // borrarla antes de crear la nueva al final.
+  var lastCol = hoja.getLastColumn();
+  var headersAll = hoja.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (var c = lastCol; c >= 1; c--) {
+    var h = String(headersAll[c - 1]);
+    if (/^Mes \(Check-out\)/i.test(h)) hoja.deleteColumn(c);
+  }
+  // Quitar filtro anterior si existe
+  var existing = hoja.getFilter();
+  if (existing) existing.remove();
+
+  lastCol = hoja.getLastColumn();
   var lastRow = hoja.getLastRow();
 
   // Columna "Mes (Check-out)" al final, con fórmula que parsea dd/MM/yyyy
@@ -1301,10 +1317,6 @@ function crearFiltroAseos() {
   }
   hoja.getRange(2, mesColIdx, formulas.length, 1).setValues(formulas);
   hoja.setColumnWidth(mesColIdx, 140);
-
-  // Quitar filtro anterior si existe
-  var existing = hoja.getFilter();
-  if (existing) existing.remove();
 
   // Crear filtro nuevo cubriendo cabecera + datos + columna Mes
   var range = hoja.getRange(1, 1, lastRow, mesColIdx);
