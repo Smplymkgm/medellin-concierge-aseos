@@ -353,15 +353,27 @@ function valToIcon(v) {
   return String(v);
 }
 
+// Helper para convertir un URL en hyperlink clickeable de Sheets
+function buildHyperlink(url, label) {
+  if (!url) return "";
+  var u = String(url).trim();
+  if (u.indexOf("http") !== 0) return u; // no es URL, lo dejamos as-is
+  var safeLabel = String(label || "Ver video").replace(/"/g, '""');
+  var safeUrl   = u.replace(/"/g, '""');
+  return '=HYPERLINK("' + safeUrl + '","' + safeLabel + '")';
+}
+
 function buildFormRow(body) {
   var rev = body.revision || {};
   var rep = body.reposicion || {};
   var fun = body.funcionamiento || {};
+  var videoUrl = String(body.videoLink || body.video || "").trim();
+  var videoCell = buildHyperlink(videoUrl, "Ver video");
   return FORM_COLUMNS.map(function(c) {
     if (c.key === "entrada")  return String(body.entrada || "").trim();
     if (c.key === "salida")   return String(body.salida  || "").trim();
     if (c.key === "reporte")  return String(body.reporte || "").trim();
-    if (c.key === "video")    return String(body.videoLink || body.video || "").trim();
+    if (c.key === "video")    return videoCell;
     if (c.group === "revision")       return valToIcon(rev[c.id]);
     if (c.group === "reposicion")     return valToIcon(rep[c.id]);
     if (c.group === "funcionamiento") return valToIcon(fun[c.id]);
@@ -1196,7 +1208,8 @@ function registrarVideoEnHoja(data) {
     hoja.setFrozenRows(1);
   }
   var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
-  hoja.appendRow([data.codigo, data.propiedad, data.aseadora, data.checkout, data.videoLink, data.notas, ahora]);
+  var linkCell = buildHyperlink(data.videoLink, "Ver video · " + (data.codigo || ""));
+  hoja.appendRow([data.codigo, data.propiedad, data.aseadora, data.checkout, linkCell, data.notas, ahora]);
 }
 
 // ============================================================
@@ -1356,6 +1369,7 @@ function onOpen() {
     .addItem("Activar/refrescar filtro por mes",    "crearFiltroAseos")
     .addSeparator()
     .addItem("Migrar form viejo (JSON → columnas)", "migrarFormJsonAColumnas")
+    .addItem("Convertir links de video a HYPERLINK", "convertirVideosAHyperlink")
     .addToUi();
 }
 
@@ -1781,6 +1795,66 @@ function migrarFormJsonAColumnas() {
 
   ss.toast(migradas + " migradas · " + omitidas + " sin cambios", "Migración", 6);
   Logger.log("Migración form: " + migradas + " filas migradas, " + omitidas + " omitidas");
+}
+
+// ============================================================
+// CONVERTIR LINKS DE VIDEO YA EXISTENTES A HYPERLINK
+// ============================================================
+// One-shot: recorre col 37 de "Todos los Aseos" y la col 5 de
+// "Videos Aseos" y reemplaza los URLs de Drive en texto plano por
+// fórmulas =HYPERLINK("url","Ver video") clickeables.
+
+function convertirVideosAHyperlink() {
+  var ss = getSS();
+  var resumen = { aseos: 0, videosSheet: 0 };
+
+  // 1. Todos los Aseos col 37 (Video)
+  var hojaAseos = ss.getSheetByName(CONFIG.hojaAseos);
+  if (hojaAseos && hojaAseos.getLastRow() >= 2 && hojaAseos.getLastColumn() >= 37) {
+    var lastRow = hojaAseos.getLastRow();
+    var values  = hojaAseos.getRange(2, 37, lastRow - 1, 1).getValues();
+    var formulas = hojaAseos.getRange(2, 37, lastRow - 1, 1).getFormulas();
+    var updates = [];
+    var any = false;
+    for (var i = 0; i < values.length; i++) {
+      var current = String(values[i][0] || "").trim();
+      var hasFormula = !!String(formulas[i][0] || "").trim();
+      if (hasFormula || !current || current.indexOf("http") !== 0) {
+        updates.push([values[i][0]]);
+        continue;
+      }
+      updates.push([buildHyperlink(current, "Ver video")]);
+      any = true;
+      resumen.aseos++;
+    }
+    if (any) {
+      hojaAseos.getRange(2, 37, lastRow - 1, 1).setValues(updates);
+    }
+  }
+
+  // 2. Hoja Videos Aseos col 5 (Link Video)
+  var hojaVideos = ss.getSheetByName(CONFIG.hojaVideos);
+  if (hojaVideos && hojaVideos.getLastRow() >= 2) {
+    var lr = hojaVideos.getLastRow();
+    var vals = hojaVideos.getRange(2, 5, lr - 1, 1).getValues();
+    var fms  = hojaVideos.getRange(2, 5, lr - 1, 1).getFormulas();
+    var codigos = hojaVideos.getRange(2, 1, lr - 1, 1).getValues();
+    var ups = [];
+    var anyV = false;
+    for (var j = 0; j < vals.length; j++) {
+      var cur = String(vals[j][0] || "").trim();
+      var hasF = !!String(fms[j][0] || "").trim();
+      if (hasF || !cur || cur.indexOf("http") !== 0) { ups.push([vals[j][0]]); continue; }
+      var cod = String(codigos[j][0] || "");
+      ups.push([buildHyperlink(cur, "Ver video · " + cod)]);
+      anyV = true;
+      resumen.videosSheet++;
+    }
+    if (anyV) hojaVideos.getRange(2, 5, lr - 1, 1).setValues(ups);
+  }
+
+  ss.toast("Convertidos: " + resumen.aseos + " en Aseos, " + resumen.videosSheet + " en Videos", "Hyperlinks", 6);
+  Logger.log("convertirVideosAHyperlink: " + JSON.stringify(resumen));
 }
 
 // ============================================================
