@@ -1189,6 +1189,11 @@ function handleRegistrarVideo(body) {
     } catch(e) { Logger.log("findByName: " + e.message); }
   }
 
+  // Asegurar que el archivo quede compartido con anyone-with-link
+  if (fileId) {
+    try { compartirAnyoneViewer(DriveApp.getFileById(fileId)); } catch(e) {}
+  }
+
   var videoLink = fileId
     ? "https://drive.google.com/file/d/" + fileId + "/view"
     : (String(body.videoLink || "").trim() || filename);
@@ -1244,17 +1249,39 @@ function notificarHubspot(aseo, aseadora) {
 // DRIVE — helpers
 // ============================================================
 
+// Compartir un folder/file con cualquier persona que tenga el link
+// (modo viewer). Idempotente: si ya está compartido así, no hace nada.
+function compartirAnyoneViewer(item) {
+  try {
+    item.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch(e) {
+    Logger.log("compartirAnyoneViewer fallo en " + (item.getName ? item.getName() : "?") + ": " + e.message);
+  }
+}
+
 function getCarpetaRaiz() {
   var folders = DriveApp.getFoldersByName(CONFIG.carpetaRaiz);
-  if (folders.hasNext()) return folders.next();
-  return DriveApp.createFolder(CONFIG.carpetaRaiz);
+  if (folders.hasNext()) {
+    var f = folders.next();
+    compartirAnyoneViewer(f); // best-effort, idempotente
+    return f;
+  }
+  var nuevo = DriveApp.createFolder(CONFIG.carpetaRaiz);
+  compartirAnyoneViewer(nuevo);
+  return nuevo;
 }
 
 function crearCarpetaPropiedad(nombrePropiedad) {
   var raiz = getCarpetaRaiz();
   var existing = raiz.getFoldersByName(nombrePropiedad);
-  if (existing.hasNext()) return existing.next().getId();
-  return raiz.createFolder(nombrePropiedad).getId();
+  if (existing.hasNext()) {
+    var ef = existing.next();
+    compartirAnyoneViewer(ef);
+    return ef.getId();
+  }
+  var nf = raiz.createFolder(nombrePropiedad);
+  compartirAnyoneViewer(nf);
+  return nf.getId();
 }
 
 function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
@@ -1370,6 +1397,7 @@ function onOpen() {
     .addSeparator()
     .addItem("Migrar form viejo (JSON → columnas)", "migrarFormJsonAColumnas")
     .addItem("Convertir links de video a HYPERLINK", "convertirVideosAHyperlink")
+    .addItem("Compartir todos los videos (anyone w/ link)", "compartirTodosLosVideos")
     .addToUi();
 }
 
@@ -1795,6 +1823,33 @@ function migrarFormJsonAColumnas() {
 
   ss.toast(migradas + " migradas · " + omitidas + " sin cambios", "Migración", 6);
   Logger.log("Migración form: " + migradas + " filas migradas, " + omitidas + " omitidas");
+}
+
+// ============================================================
+// COMPARTIR TODOS LOS VIDEOS — one-shot
+// ============================================================
+// Recorre la carpeta raíz "Medellin Concierge - Videos Aseos" + todas
+// sus subcarpetas + todos los archivos adentro, y aplica
+// anyone-with-link viewer. Idempotente. Útil para los videos ya
+// subidos antes de activar esto.
+
+function compartirTodosLosVideos() {
+  var raiz = getCarpetaRaiz();
+  compartirAnyoneViewer(raiz);
+
+  var subs = raiz.getFolders();
+  var nFolders = 0, nFiles = 0, errs = 0;
+  while (subs.hasNext()) {
+    var sf = subs.next();
+    try { compartirAnyoneViewer(sf); nFolders++; } catch(e) { errs++; }
+    var files = sf.getFiles();
+    while (files.hasNext()) {
+      try { compartirAnyoneViewer(files.next()); nFiles++; }
+      catch(e) { errs++; }
+    }
+  }
+  getSS().toast(nFolders + " carpetas · " + nFiles + " archivos compartidos" + (errs ? " · " + errs + " errores" : ""), "Compartir", 6);
+  Logger.log("compartirTodosLosVideos: folders=" + nFolders + " files=" + nFiles + " errs=" + errs);
 }
 
 // ============================================================
