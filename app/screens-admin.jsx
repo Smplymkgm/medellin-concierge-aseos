@@ -4,21 +4,34 @@
 const { useState: useStateA } = React;
 
 function AseosScreen({ ctx }) {
-  const cleaners = PERSONAL.filter(p => p.rol === 'aseadora').map(p => p.nombre);
+  // Default: month current. Filtros se aplican sobre checkout.
+  const cleaners = ctx.personal.filter(p => p.rol === 'aseadora').map(p => p.nombre);
   const f = ctx.filter;
+
+  // Si no hay fechas en el filtro, default = mes actual
+  const monthStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+  const monthEnd   = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
+  const fmtISO = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const desdeStr = f.desde || fmtISO(monthStart);
+  const hastaStr = f.hasta || fmtISO(monthEnd);
+  const desde = new Date(desdeStr + 'T00:00:00');
+  const hasta = new Date(hastaStr + 'T23:59:59');
+
   let list = ctx.aseos.filter(a => a.status !== 'done');
+  // Filtro por rango de fecha (checkout)
+  list = list.filter(a => a.checkout >= desde && a.checkout <= hasta);
   if (f.estado === 'urgent') list = list.filter(a => a.status === 'urgent' || a.priority);
   else if (f.estado === 'unassigned') list = list.filter(a => a.status === 'unassigned');
   else if (f.estado === 'pending') list = list.filter(a => a.status === 'pending');
   if (f.aseadora) list = list.filter(a => a.asignada === f.aseadora);
 
   const groups = groupByDay(list);
-  const active = f.estado !== 'all' || f.aseadora;
+  const active = f.estado !== 'all' || f.aseadora || f.desde || f.hasta;
 
   return (
     <div className="scrollarea">
       <AppBar title="Aseos" subtitle={list.length + ' programados'} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Sincronizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
 
       <div className="filters">
         <div className="chips">
@@ -32,10 +45,15 @@ function AseosScreen({ ctx }) {
               onClick={() => ctx.setFilter({ ...f, aseadora: f.aseadora === c ? null : c })}>{c}</button>
           ))}
         </div>
-        <div className="daterange">
-          <div className="date-input"><Icon name="calendar" size={16} /> 31 may 2026</div>
-          <div className="date-input"><Icon name="calendar" size={16} /> 6 jun 2026</div>
-          {active && <button className="clear-btn" onClick={() => ctx.setFilter({ estado: 'all', aseadora: null })}>Limpiar</button>}
+        <div className="daterange" style={{ gap: 6 }}>
+          <input type="date" className="date-input" value={desdeStr}
+            onChange={e => ctx.setFilter({ ...f, desde: e.target.value })}
+            style={{ flex: 1, padding: 8, border: '1px solid var(--border-light)', borderRadius: 6, fontFamily: 'inherit' }} />
+          <span className="caption sec">a</span>
+          <input type="date" className="date-input" value={hastaStr}
+            onChange={e => ctx.setFilter({ ...f, hasta: e.target.value })}
+            style={{ flex: 1, padding: 8, border: '1px solid var(--border-light)', borderRadius: 6, fontFamily: 'inherit' }} />
+          {active && <button className="clear-btn" onClick={() => ctx.setFilter({ estado: 'all', aseadora: null, desde: '', hasta: '' })}>Limpiar</button>}
         </div>
       </div>
 
@@ -150,28 +168,32 @@ function PropiedadDetail({ ctx, propId }) {
 
 function PersonalScreen({ ctx }) {
   const cleaners = ctx.personal.filter(p => p.rol === 'aseadora');
+  const mesActual = MONTHS_SHORT[TODAY.getMonth()];
   return (
     <div className="scrollarea">
-      <AppBar title="Personal" subtitle={cleaners.length + ' aseadoras'} onLogout={ctx.logout} />
+      <AppBar title="Personal" subtitle={cleaners.length + ' aseadoras'} onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
       <div className="team-list">
         {cleaners.map(c => {
-          const done = ctx.aseos.filter(a => a.asignada === c.nombre && a.status === 'done');
+          const done = ctx.aseos.filter(a => a.asignada === c.nombre && a.status === 'done' && a.checkout.getMonth() === TODAY.getMonth() && a.checkout.getFullYear() === TODAY.getFullYear());
           const pend = ctx.aseos.filter(a => a.asignada === c.nombre && a.status !== 'done');
           const gan = done.reduce((s, a) => s + aseoEnriched(a).precio, 0);
           return (
-            <div className="team-row" key={c.codigo || c.nombre}>
+            <div className="team-row" key={c.codigo || c.nombre}
+              onClick={() => ctx.openEditCleaner && ctx.openEditCleaner(c)}
+              style={{ cursor: 'pointer' }}>
               <span className="team-avatar">{initials(c.nombre).toUpperCase()}</span>
               <div className="team-main">
                 <div className="label ter" style={{ marginBottom: 1 }}>{c.codigo}</div>
                 <div className="h3">{c.nombre}</div>
                 <div className="caption">{pend.length} pendientes · {done.length} completados</div>
                 <div className="row gap-sm caption" style={{ marginTop: 2, color: 'var(--text-tertiary)' }}>
-                  <Icon name="phone" size={14} /> {c.tel}
+                  <Icon name="phone" size={14} /> {c.tel || '—'}
                 </div>
               </div>
               <div className="team-stat">
                 <div className="num">{fmtCOP(gan)}</div>
-                <div className="label ter">Mayo</div>
+                <div className="label ter" style={{ textTransform: 'capitalize' }}>{mesActual}</div>
               </div>
             </div>
           );
@@ -199,7 +221,7 @@ function HistorialAdminScreen({ ctx }) {
   list = filterByPeriod(list, period);
   if (aseadora) list = list.filter(a => a.asignada === aseadora);
   if (propId)   list = list.filter(a => a.prop === propId);
-  list = list.sort((a, b) => (b.completadoEl || b.checkout) - (a.completadoEl || a.checkout));
+  list = list.sort((a, b) => b.checkout - a.checkout);
 
   // Per-aseadora totals (payroll)
   const totales = {};

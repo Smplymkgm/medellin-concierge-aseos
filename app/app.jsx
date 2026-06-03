@@ -176,6 +176,8 @@ function App() {
   const [editProp, setEditProp] = useStateL(null);
   const [editPropOpen, setEditPropOpen]   = useStateL(false);
   const [addCleanerOpen, setAddCleanerOpen] = useStateL(false);
+  const [editCleaner, setEditCleaner]       = useStateL(null);
+  const [editCleanerOpen, setEditCleanerOpen] = useStateL(false);
   const [tab, setTab]           = useStateL('hoy');
   const [openId, setOpenId]     = useStateL(null);
   const [propId, setPropId]     = useStateL(null);
@@ -349,6 +351,35 @@ function App() {
     setAddCleanerOpen(false);
     showToast('Aseadora creada · ' + nueva.codigo);
   }
+  function openEditCleaner(persona) { setEditCleaner(persona); setEditCleanerOpen(true); }
+  function doSaveCleaner(persona, cambios) {
+    const next = personal.map(p => p.nombre === persona.nombre
+      ? { ...p, pin: cambios.pin || p.pin, tel: cambios.tel, email: cambios.email }
+      : p);
+    setLivePersonal(next); setPersonal(next);
+    setEditCleanerOpen(false);
+    showToast('Guardando…');
+
+    gasPost({
+      action: 'actualizarPersonal',
+      nombre: persona.nombre,
+      datos: {
+        pin:      cambios.pin || persona.pin,
+        telefono: cambios.tel,
+        email:    cambios.email,
+      }
+    }).then(res => {
+      if (res && res.ok) showToast('Datos guardados');
+      else {
+        // rollback
+        setLivePersonal(personal); setPersonal(personal);
+        showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => {
+      setLivePersonal(personal); setPersonal(personal);
+      showToast('Error de conexión, no se guardó');
+    });
+  }
 
   function doAgregar(data) {
     const prop = propById(data.propId);
@@ -392,16 +423,20 @@ function App() {
   const ctx = {
     user: session.nombre, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
-    openEditProp, openAddProp, openAddCleaner,
+    openEditProp, openAddProp, openAddCleaner, openEditCleaner,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
-    filter, setFilter, openSync: () => showToast('Sincronizando con Airbnb…'),
+    filter, setFilter,
+    openSync: () => {
+      showToast('Actualizando…');
+      loadDataFor(session.nombre, session.rol).then(() => showToast('Datos actualizados'));
+    },
   };
 
   // urgent count for nav badge
   const urgentMine = aseos.filter(a => (isAdmin ? true : a.asignada === session.nombre) && (a.status === 'urgent' || a.priority) && a.status !== 'done').length;
 
   const cleanerTabs = [
-    { id: 'hoy', label: 'Hoy', icon: 'list', badge: urgentMine || null },
+    { id: 'hoy', label: 'Aseos', icon: 'list', badge: urgentMine || null },
     { id: 'calendario', label: 'Calendario', icon: 'calendar' },
     { id: 'historial', label: 'Historial', icon: 'check' },
   ];
@@ -451,6 +486,7 @@ function App() {
         <AgregarAseoSheet open={agregarOpen} onClose={() => setAgregarOpen(false)} onAdd={doAgregar} />
         <EditarPropiedadSheet open={editPropOpen} prop={editProp} onClose={() => setEditPropOpen(false)} onSave={doSaveProp} />
         <AgregarAseadoraSheet open={addCleanerOpen} onClose={() => setAddCleanerOpen(false)} onAdd={doAddCleaner} />
+        <EditarAseadoraSheet open={editCleanerOpen} persona={editCleaner} onClose={() => setEditCleanerOpen(false)} onSave={doSaveCleaner} />
 
         {toast && <div className="toast">{toast}</div>}
       </div>

@@ -509,4 +509,57 @@ function AgregarAseadoraSheet({ open, onClose, onAdd }) {
   );
 }
 
-Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet });
+/* ---- Editar aseadora: nombre/PIN/tel/email ---- */
+function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
+  const [pin, setPin]     = useStateS('');
+  const [tel, setTel]     = useStateS('');
+  const [email, setEmail] = useStateS('');
+  useEffectS(() => {
+    if (open && persona) {
+      setPin(persona.pin || '');
+      setTel(persona.tel || '');
+      setEmail(persona.email || '');
+    }
+  }, [open, persona]);
+
+  if (!persona) return null;
+
+  const pinOk = !pin || /^\d{4}$/.test(pin);
+  const canSave = pinOk;
+
+  const footer = (
+    <button className="btn btn-primary btn-block btn-lg" disabled={!canSave}
+      onClick={() => onSave(persona, { pin: pin, tel: tel.trim(), email: email.trim() })}>Guardar cambios</button>
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} title={'Editar ' + persona.nombre} footer={footer} height="auto">
+      <div className="row gap-base" style={{ marginBottom: 20 }}>
+        <div className="team-avatar">{initials(persona.nombre).toUpperCase()}</div>
+        <div>
+          <div className="h3">{persona.nombre}</div>
+          <div className="caption sec">{persona.rol === 'admin' ? 'Administradora' : 'Aseadora'}</div>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="label">PIN (4 dígitos)</label>
+        <input className="text-input" inputMode="numeric" maxLength="4" value={pin}
+          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="0000"
+          style={{ letterSpacing: '0.3em', fontVariantNumeric: 'tabular-nums' }} />
+      </div>
+
+      <div className="form-group">
+        <label className="label">Teléfono</label>
+        <input className="text-input" inputMode="tel" value={tel} onChange={e => setTel(e.target.value)} placeholder="+57 300 000 0000" />
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Email</label>
+        <input className="text-input" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nombre@medcon.co" />
+      </div>
+    </Sheet>
+  );
+}
+
+Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet, EditarAseadoraSheet });

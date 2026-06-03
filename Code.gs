@@ -1018,12 +1018,71 @@ function autoCompletarAseosPasados() {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Medellin Concierge")
-    .addItem("Sincronizar Airbnb",           "sincronizarCalendarios")
+    .addItem("Sincronizar Airbnb",            "sincronizarCalendarios")
     .addItem("Sincronizar Google Calendar",   "sincronizarGoogleCalendar")
     .addSeparator()
     .addItem("Crear triggers automaticos",    "crearTriggersAutomaticos")
-    .addItem("Agregar Admin a Personal",       "agregarAdmin")
+    .addItem("Agregar Admin a Personal",      "agregarAdmin")
+    .addSeparator()
+    .addItem("Limpiar hojas duplicadas con emojis", "limpiarHojasDuplicadas")
     .addToUi();
+}
+
+// ============================================================
+// LIMPIAR HOJAS DUPLICADAS CON EMOJIS/PREFIJOS CORRUPTOS
+// ============================================================
+// Si existe una hoja "📋 Todas las Reservas" (o variante corrupta tipo
+// "üìã Todas las Reservas") Y existe la versión limpia "Todas las Reservas",
+// elimina la prefijada. Si NO existe la versión limpia, renombra la prefijada
+// para quitarle los caracteres no-ASCII del inicio.
+
+function limpiarHojasDuplicadas() {
+  var ss = getSS();
+  var sheets = ss.getSheets();
+  var byCleanName = {};
+
+  // Indexar nombres limpios existentes
+  for (var i = 0; i < sheets.length; i++) {
+    var nm = sheets[i].getName();
+    var clean = nm.replace(/^[^A-Za-z0-9]+/, "").trim();
+    if (nm === clean) byCleanName[clean] = sheets[i];
+  }
+
+  var eliminadas = 0;
+  var renombradas = 0;
+  var skipped = [];
+
+  for (var j = 0; j < sheets.length; j++) {
+    var sh = sheets[j];
+    var name = sh.getName();
+    var cleanName = name.replace(/^[^A-Za-z0-9]+/, "").trim();
+    if (name === cleanName) continue; // ya está limpio
+
+    if (byCleanName[cleanName] && byCleanName[cleanName].getSheetId() !== sh.getSheetId()) {
+      // Existe versión limpia — eliminar la prefijada
+      try {
+        ss.deleteSheet(sh);
+        eliminadas++;
+        Logger.log("Eliminada (duplicada): " + name);
+      } catch(e) {
+        skipped.push(name + " (no se pudo eliminar: " + e.message + ")");
+      }
+    } else {
+      // No hay versión limpia — renombrar
+      try {
+        sh.setName(cleanName);
+        renombradas++;
+        Logger.log("Renombrada: " + name + " -> " + cleanName);
+      } catch(e) {
+        skipped.push(name + " (no se pudo renombrar: " + e.message + ")");
+      }
+    }
+  }
+
+  var msg = "Listo. " + eliminadas + " eliminadas, " + renombradas + " renombradas.";
+  if (skipped.length) msg += " Skipped: " + skipped.join(", ");
+  ss.toast(msg, "Limpieza", 8);
+  Logger.log(msg);
 }
 
 // ============================================================
