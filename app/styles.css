@@ -263,8 +263,17 @@ html, body {
   display: flex;
   background: var(--bg-surface);
   border-top: 1px solid var(--border-light);
-  padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+  /* Extra bottom padding para librar el URL bar flotante de iOS Safari */
+  padding: 6px 0 calc(max(12px, env(safe-area-inset-bottom)) + 28px);
   flex-shrink: 0;
+}
+/* Cuando la app corre como PWA standalone o en escritorio, no necesitamos
+   el extra para el URL bar de Safari */
+@media (display-mode: standalone) {
+  .bottomnav { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+}
+@media (min-width: 768px) {
+  .bottomnav { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 .navtab {
   flex: 1;
@@ -567,7 +576,9 @@ html, body {
 
 /* FAB for admin add */
 .fab {
-  position: absolute; right: var(--sp-lg); bottom: 84px;
+  position: absolute; right: var(--sp-lg);
+  /* Quedar por encima del bottomnav (~90px) + URL bar iOS */
+  bottom: calc(96px + env(safe-area-inset-bottom));
   width: 52px; height: 52px; border-radius: 16px;
   background: var(--accent); color: #fff; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
