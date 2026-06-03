@@ -382,6 +382,7 @@ function App() {
   ];
   const adminTabs = [
     { id: 'aseos', label: 'Aseos', icon: 'list', badge: urgentMine || null },
+    { id: 'historial', label: 'Historial', icon: 'check' },
     { id: 'calendario', label: 'Calendario', icon: 'calendar' },
     { id: 'propiedades', label: 'Propiedades', icon: 'home' },
     { id: 'personal', label: 'Personal', icon: 'users' },
@@ -392,6 +393,7 @@ function App() {
     screen = <PropiedadDetail ctx={ctx} propId={propId} />;
   } else if (isAdmin) {
     if (tab === 'aseos') screen = <AseosScreen ctx={ctx} />;
+    else if (tab === 'historial') screen = <HistorialAdminScreen ctx={ctx} />;
     else if (tab === 'calendario') screen = <CalendarioScreen ctx={ctx} role="admin" />;
     else if (tab === 'propiedades') screen = <PropiedadesScreen ctx={ctx} />;
     else screen = <PersonalScreen ctx={ctx} />;

@@ -182,4 +182,92 @@ function PersonalScreen({ ctx }) {
   );
 }
 
-Object.assign(window, { AseosScreen, PropiedadesScreen, PropiedadDetail, PersonalScreen });
+/* ============================================================
+   Admin Historial — payroll-focused filtered view
+   ============================================================ */
+function HistorialAdminScreen({ ctx }) {
+  const [period, setPeriod] = useStateA({
+    mode: 'month', year: TODAY.getFullYear(), month: TODAY.getMonth(), from: '', to: ''
+  });
+  const [aseadora, setAseadora] = useStateA(null);
+  const [propId, setPropId]     = useStateA(null);
+
+  const cleaners = ctx.personal.filter(p => p.rol === 'aseadora').map(p => p.nombre);
+  const propsList = ctx.props;
+
+  let list = ctx.aseos.filter(a => a.status === 'done');
+  list = filterByPeriod(list, period);
+  if (aseadora) list = list.filter(a => a.asignada === aseadora);
+  if (propId)   list = list.filter(a => a.prop === propId);
+  list = list.sort((a, b) => (b.completadoEl || b.checkout) - (a.completadoEl || a.checkout));
+
+  // Per-aseadora totals (payroll)
+  const totales = {};
+  list.forEach(a => {
+    const k = a.asignada || 'Sin asignar';
+    if (!totales[k]) totales[k] = { count: 0, total: 0 };
+    totales[k].count++;
+    totales[k].total += aseoEnriched(a).precio;
+  });
+  const totalGlobal = list.reduce((s, a) => s + aseoEnriched(a).precio, 0);
+  const filtroActivo = aseadora || propId;
+
+  return (
+    <div className="scrollarea">
+      <AppBar title="Historial" subtitle={list.length + ' completados'} onLogout={ctx.logout} />
+      <MonthRangePicker value={period} onChange={setPeriod} />
+
+      <div className="filters" style={{ marginTop: 8 }}>
+        <div className="chips">
+          <button className={'chip' + (!aseadora ? ' active' : '')} onClick={() => setAseadora(null)}>Todas</button>
+          {cleaners.map(c => (
+            <button key={c} className={'chip' + (aseadora === c ? ' active' : '')}
+              onClick={() => setAseadora(aseadora === c ? null : c)}>{c}</button>
+          ))}
+        </div>
+        <div className="chips" style={{ marginTop: 6 }}>
+          <button className={'chip' + (!propId ? ' active' : '')} onClick={() => setPropId(null)}>Todas las props</button>
+          {propsList.slice(0, 12).map(p => (
+            <button key={p.id} className={'chip' + (propId === p.id ? ' active' : '')}
+              onClick={() => setPropId(propId === p.id ? null : p.id)}>{p.nombre.slice(0, 18)}</button>
+          ))}
+        </div>
+        {filtroActivo && (
+          <button className="clear-btn" style={{ marginTop: 6 }} onClick={() => { setAseadora(null); setPropId(null); }}>Limpiar filtros</button>
+        )}
+      </div>
+
+      <div style={{ padding: '12px 20px 0' }}>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16 }}>
+          <div className="label ter" style={{ textTransform: 'capitalize' }}>{periodLabel(period)}</div>
+          <div className="h1" style={{ marginTop: 4 }}>{fmtCOP(totalGlobal)}</div>
+          <div className="caption">{list.length} aseos · total a pagar</div>
+          {Object.keys(totales).length > 1 && (
+            <div style={{ marginTop: 10, borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
+              {Object.entries(totales).sort((a,b) => b[1].total - a[1].total).map(([n, t]) => (
+                <div key={n} className="key-row" style={{ padding: '4px 0' }}>
+                  <span className="body">{n} <span className="caption sec">· {t.count}</span></span>
+                  <span className="body" style={{ fontWeight: 600 }}>{fmtCOP(t.total)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="aseo-list">
+        <div className="day-head"><span className="label sec">Detalle</span></div>
+        {list.length === 0 && (
+          <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos con estos filtros</div></div>
+        )}
+        {list.map(a => (
+          <AseoCard key={a.codigo} aseo={a} role="admin"
+            open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)} />
+        ))}
+        <div style={{ height: 80 }}></div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { AseosScreen, PropiedadesScreen, PropiedadDetail, PersonalScreen, HistorialAdminScreen });
