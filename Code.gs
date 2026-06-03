@@ -1028,7 +1028,112 @@ function onOpen() {
     .addItem("Limpiar hojas duplicadas con emojis", "limpiarHojasDuplicadas")
     .addSeparator()
     .addItem("Self-test (diagnóstico)",             "runSelfTest")
+    .addSeparator()
+    .addItem("Ordenar hoja Aseos por fecha",        "ordenarHojaAseosPorFecha")
+    .addItem("Activar/refrescar filtro por mes",    "crearFiltroAseos")
     .addToUi();
+}
+
+// ============================================================
+// ORDENAR HOJA ASEOS por fecha de Check-out
+// ============================================================
+// Las fechas viven como texto dd/MM/yyyy (col 5). Sort nativo de Sheets
+// las ordenaría alfabéticamente (mal). Esta función las convierte a
+// orden cronológico real y reescribe la hoja en orden.
+
+function ordenarHojaAseosPorFecha() {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch(e) {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Otro proceso en ejecución, intenta de nuevo", "Ordenar", 5);
+    return;
+  }
+  try {
+    var ss = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (!hoja || hoja.getLastRow() < 2) {
+      ss.toast("Hoja Aseos vacía o no existe", "Ordenar", 4);
+      return;
+    }
+    var lastCol = Math.max(hoja.getLastColumn(), 13);
+    var datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, lastCol).getValues();
+    var disp  = hoja.getRange(2, 4, hoja.getLastRow() - 1, 2).getDisplayValues();
+
+    // Construir array con clave de ordenamiento = checkout como Date
+    var indexed = datos.map(function(row, i) {
+      var checkoutStr = disp[i][1] || fechaToStr(row[4]);
+      var d = fechaADate(checkoutStr);
+      return {
+        row: row,
+        ts: d ? d.getTime() : 0,    // 0 = al inicio para los sin fecha
+      };
+    });
+
+    indexed.sort(function(a, b) { return a.ts - b.ts; });
+    var sorted = indexed.map(function(x) { return x.row; });
+
+    // Reescritura en un solo setValues — preserva formatos de columna
+    hoja.getRange(2, 1, sorted.length, lastCol).setValues(sorted);
+    hoja.getRange(2, 4, sorted.length, 2).setNumberFormat("@");
+    hoja.getRange(2, 9, sorted.length, 1).setNumberFormat("$#,##0");
+
+    ss.toast("Ordenado " + sorted.length + " filas por Check-out", "Ordenar", 5);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
+}
+
+// ============================================================
+// FILTRO en hoja Aseos — permite filtrar por mes desde el UI de Sheets
+// ============================================================
+// Crea una columna oculta "Mes" calculada con la fórmula del checkout,
+// luego activa createFilter() sobre toda la tabla incluida esa columna.
+// El usuario puede clickear el embudo de "Mes" y elegir uno o varios.
+
+function crearFiltroAseos() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) {
+    ss.toast("Hoja Aseos vacía o no existe", "Filtro", 4);
+    return;
+  }
+
+  // Cuántas columnas activas tiene la hoja
+  var lastCol = Math.max(hoja.getLastColumn(), 13);
+  var lastRow = hoja.getLastRow();
+
+  // Columna "Mes (Check-out)" al final, con fórmula que parsea dd/MM/yyyy
+  var mesColIdx = lastCol + 1;
+  hoja.getRange(1, mesColIdx).setValue("Mes (Check-out)")
+    .setBackground("#1a1a2e").setFontColor("#ffffff")
+    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
+
+  // Fórmula por celda: extrae yyyy-mm y agrega nombre del mes
+  // Ejemplo entrada: 03/06/2026  →  salida: 2026-06 Junio
+  var formulas = [];
+  var fechas = hoja.getRange(2, 5, lastRow - 1, 1).getDisplayValues();
+  for (var i = 0; i < fechas.length; i++) {
+    var f = String(fechas[i][0]).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(f)) {
+      var p = f.split("/");
+      var mesIdx = parseInt(p[1]) - 1;
+      var mesNom = (mesIdx >= 0 && mesIdx <= 11) ? CONFIG.meses[mesIdx] : "";
+      formulas.push([p[2] + "-" + p[1] + " " + mesNom]);
+    } else {
+      formulas.push([""]);
+    }
+  }
+  hoja.getRange(2, mesColIdx, formulas.length, 1).setValues(formulas);
+  hoja.setColumnWidth(mesColIdx, 140);
+
+  // Quitar filtro anterior si existe
+  var existing = hoja.getFilter();
+  if (existing) existing.remove();
+
+  // Crear filtro nuevo cubriendo cabecera + datos + columna Mes
+  var range = hoja.getRange(1, 1, lastRow, mesColIdx);
+  range.createFilter();
+
+  ss.toast("Filtro activado · click en el embudo de 'Mes' para filtrar", "Filtro", 6);
 }
 
 // ============================================================
