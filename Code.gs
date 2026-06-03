@@ -105,6 +105,7 @@ function doPost(e) {
     if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
+    if (action === "listarVideos")        return handleListarVideos(body);
 
     if (action === "debug") {
       var ss2 = getSS();
@@ -1331,6 +1332,36 @@ function fixSheetNames() {
 }
 
 function getSpreadsheetId() { Logger.log(getSS().getId()); }
+
+// ============================================================
+// LISTAR VIDEOS REGISTRADOS (debug rápido)
+// ============================================================
+// Devuelve el contenido de la hoja "Videos Aseos" + el folderId de la
+// carpeta raíz de Drive donde se suben los videos.
+
+function handleListarVideos(body) {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaVideos);
+  var rows = [];
+  if (hoja && hoja.getLastRow() >= 2) {
+    var datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getDisplayValues();
+    rows = datos.map(function(r) {
+      return {
+        codigo: r[0], propiedad: r[1], aseadora: r[2],
+        checkout: r[3], link: r[4], notas: r[5], registrado: r[6],
+      };
+    });
+  }
+  var carpetaRaiz = null;
+  try {
+    var folders = DriveApp.getFoldersByName(CONFIG.carpetaRaiz);
+    if (folders.hasNext()) {
+      var f = folders.next();
+      carpetaRaiz = { id: f.getId(), url: 'https://drive.google.com/drive/folders/' + f.getId(), nombre: f.getName() };
+    }
+  } catch(e) {}
+  return respond(true, { videos: rows, carpetaRaiz: carpetaRaiz, total: rows.length });
+}
 
 // ============================================================
 // SELF-TEST — diagnóstico end-to-end. Correr desde menú o vía
