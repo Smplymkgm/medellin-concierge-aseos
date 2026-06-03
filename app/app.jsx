@@ -323,7 +323,7 @@ function App() {
       reposicion:     payload.reposicion || null,
       funcionamiento: payload.funcionamiento || null,
       reporte:   payload.reporte || '',
-      videoLink: (payload.file && payload.file.name) || '',
+      videoLink: (payload.file && (payload.file.link || payload.file.name)) || '',
     }).catch(function() {});
 
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
