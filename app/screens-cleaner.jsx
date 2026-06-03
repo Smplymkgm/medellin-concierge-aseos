@@ -30,7 +30,8 @@ function HoyScreen({ ctx }) {
 
   return (
     <div className="scrollarea">
-      <AppBar title={'Hola, ' + ctx.user} subtitle={fmtDate(TODAY)} onLogout={ctx.logout} />
+      <AppBar title={'Hola, ' + ctx.user} subtitle={fmtDate(TODAY)} onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
       <div className="aseo-list">
         <div className="day-head">
           <span className="label sec">Hoy</span>
@@ -69,12 +70,60 @@ function HoyScreen({ ctx }) {
   );
 }
 
+/* ============================================================
+   Todos — lista completa de aseos asignados a la aseadora,
+   agrupada por mes, ordenada por fecha desc
+   ============================================================ */
+function TodosScreen({ ctx }) {
+  const mine = ctx.aseos.filter(a => a.asignada === ctx.user);
+
+  // Ordenar por checkout descendente y agrupar por mes
+  const sorted = [...mine].sort((a, b) => b.checkout - a.checkout);
+  const groups = [];
+  sorted.forEach(a => {
+    const k = a.checkout.getFullYear() + '-' + a.checkout.getMonth();
+    let g = groups.find(g => g.key === k);
+    if (!g) { g = { key: k, year: a.checkout.getFullYear(), month: a.checkout.getMonth(), items: [] }; groups.push(g); }
+    g.items.push(a);
+  });
+
+  const totalDone   = mine.filter(a => a.status === 'done').length;
+  const totalActivos = mine.length - totalDone;
+
+  return (
+    <div className="scrollarea">
+      <AppBar title="Todos" subtitle={mine.length + ' en total · ' + totalActivos + ' activos · ' + totalDone + ' completados'} onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+      <div className="aseo-list">
+        {groups.length === 0 && (
+          <div className="empty"><Icon name="list" size={28} /><div className="body">No tienes aseos asignados</div></div>
+        )}
+        {groups.map(g => (
+          <div className="day-group" key={g.key}>
+            <div className="day-head">
+              <span className="label sec" style={{ textTransform: 'capitalize' }}>{MONTHS[g.month]} {g.year}</span>
+              <span className="caption count">{g.items.length}</span>
+            </div>
+            {g.items.map(a => (
+              <AseoCard key={a.codigo} aseo={a} role="aseadora"
+                open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
+                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+            ))}
+          </div>
+        ))}
+        <div style={{ height: 80 }}></div>
+      </div>
+    </div>
+  );
+}
+
 function CalendarioScreen({ ctx, role }) {
   const list = role === 'admin' ? ctx.aseos : ctx.aseos.filter(a => a.asignada === ctx.user);
   const dayItems = sortAseos(list.filter(a => ctx.calSel && sameDay(a.checkout, ctx.calSel)));
   return (
     <div className="scrollarea">
-      <AppBar title="Calendario" onLogout={ctx.logout} />
+      <AppBar title="Calendario" onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
       <MonthCalendar aseos={list} selected={ctx.calSel} onSelect={ctx.setCalSel}
         month={ctx.calMonth} year={ctx.calYear} onMonth={ctx.shiftMonth} />
       <div className="cal-daylist">
@@ -89,41 +138,114 @@ function CalendarioScreen({ ctx, role }) {
   );
 }
 
-function HistorialScreen({ ctx }) {
-  const done = ctx.aseos.filter(a => a.asignada === ctx.user && a.status === 'done')
-    .sort((a, b) => (b.completadoEl || b.checkout) - (a.completadoEl || a.checkout));
-  const ganancia = done.reduce((s, a) => s + aseoEnriched(a).precio, 0);
-  const esteMes = done.filter(a => (a.completadoEl || a.checkout).getMonth() === TODAY.getMonth());
-  const gananciaMes = esteMes.reduce((s, a) => s + aseoEnriched(a).precio, 0);
-
+/* ============================================================
+   Month/range picker — shared by Historial (cleaner + admin)
+   ============================================================ */
+function MonthRangePicker({ value, onChange }) {
+  // value: { mode: 'month'|'range', year, month, from, to }
+  const isMonth = value.mode === 'month';
+  function shift(dir) {
+    let m = value.month + dir, y = value.year;
+    if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+    onChange({ ...value, year: y, month: m });
+  }
+  function toRange() {
+    const start = new Date(value.year, value.month, 1);
+    const end   = new Date(value.year, value.month + 1, 0);
+    const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    onChange({ mode: 'range', year: value.year, month: value.month, from: fmt(start), to: fmt(end) });
+  }
+  function toMonth() { onChange({ ...value, mode: 'month' }); }
   return (
-    <div className="scrollarea">
-      <AppBar title="Historial" onLogout={ctx.logout} />
-      <div style={{ padding: '4px 20px 0' }}>
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16, display: 'flex', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <div className="label ter">Ganancia mayo</div>
-            <div className="h1" style={{ marginTop: 4 }}>{fmtCOP(gananciaMes)}</div>
-            <div className="caption">{esteMes.length} aseos completados</div>
+    <div style={{ padding: '4px 20px 0' }}>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 12 }}>
+        {isMonth ? (
+          <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+            <button className="icon-btn" onClick={() => shift(-1)} aria-label="Mes anterior"><Icon name="chevron-left" size={20} /></button>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="h3" style={{ textTransform: 'capitalize' }}>{MONTHS[value.month]} {value.year}</div>
+            </div>
+            <button className="icon-btn" onClick={() => shift(1)} aria-label="Mes siguiente"><Icon name="chevron-right" size={20} /></button>
+            <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={toRange}>Rango</button>
           </div>
-          <div style={{ width: 1, background: 'var(--border-light)' }}></div>
-          <div style={{ flex: 1 }}>
-            <div className="label ter">Acumulado</div>
-            <div className="h1" style={{ marginTop: 4 }}>{fmtCOP(ganancia)}</div>
-            <div className="caption">{done.length} en total</div>
+        ) : (
+          <div>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <input type="date" value={value.from} onChange={e => onChange({ ...value, from: e.target.value })}
+                style={{ flex: 1, padding: 8, border: '1px solid var(--border-light)', borderRadius: 6, fontFamily: 'inherit' }} />
+              <span className="caption sec">a</span>
+              <input type="date" value={value.to} onChange={e => onChange({ ...value, to: e.target.value })}
+                style={{ flex: 1, padding: 8, border: '1px solid var(--border-light)', borderRadius: 6, fontFamily: 'inherit' }} />
+              <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={toMonth}>Mes</button>
+            </div>
           </div>
-        </div>
-      </div>
-      <div className="aseo-list">
-        <div className="day-head"><span className="label sec">Completados</span></div>
-        {done.map(a => (
-          <AseoCard key={a.codigo} aseo={a} role="aseadora"
-            open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)} />
-        ))}
-        <div style={{ height: 16 }}></div>
+        )}
       </div>
     </div>
   );
 }
 
-Object.assign(window, { HoyScreen, CalendarioScreen, HistorialScreen, sortAseos, groupByDay });
+/* Filter completed aseos by the chosen period.
+   Uses CHECKOUT (la fecha en que se realiza el aseo), no la fecha
+   de completar. Una reserva que entró en mayo pero hace checkout en
+   junio cuenta para junio. */
+function filterByPeriod(aseos, period) {
+  return aseos.filter(a => {
+    const dt = a.checkout;
+    if (!(dt instanceof Date)) return false;
+    if (period.mode === 'month') {
+      return dt.getFullYear() === period.year && dt.getMonth() === period.month;
+    }
+    const from = period.from ? new Date(period.from + 'T00:00:00') : null;
+    const to   = period.to   ? new Date(period.to   + 'T23:59:59') : null;
+    if (from && dt < from) return false;
+    if (to   && dt > to)   return false;
+    return true;
+  });
+}
+
+function periodLabel(period) {
+  if (period.mode === 'month') return MONTHS[period.month] + ' ' + period.year;
+  return (period.from || '—') + ' a ' + (period.to || '—');
+}
+
+const { useState: useStateH } = React;
+
+function HistorialScreen({ ctx }) {
+  const [period, setPeriod] = useStateH({
+    mode: 'month', year: TODAY.getFullYear(), month: TODAY.getMonth(), from: '', to: ''
+  });
+
+  const allDone = ctx.aseos.filter(a => a.asignada === ctx.user && a.status === 'done');
+  const inPeriod = filterByPeriod(allDone, period)
+    .sort((a, b) => b.checkout - a.checkout);
+  const gananciaPeriodo = inPeriod.reduce((s, a) => s + aseoEnriched(a).precio, 0);
+
+  return (
+    <div className="scrollarea">
+      <AppBar title="Historial" onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+      <MonthRangePicker value={period} onChange={setPeriod} />
+      <div style={{ padding: '12px 20px 0' }}>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16 }}>
+          <div className="label ter" style={{ textTransform: 'capitalize' }}>{periodLabel(period)}</div>
+          <div className="h1" style={{ marginTop: 4 }}>{fmtCOP(gananciaPeriodo)}</div>
+          <div className="caption">{inPeriod.length} {inPeriod.length === 1 ? 'aseo completado' : 'aseos completados'}</div>
+        </div>
+      </div>
+      <div className="aseo-list">
+        <div className="day-head"><span className="label sec">Completados</span></div>
+        {inPeriod.length === 0 && (
+          <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos en este período</div></div>
+        )}
+        {inPeriod.map(a => (
+          <AseoCard key={a.codigo} aseo={a} role="aseadora"
+            open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)} />
+        ))}
+        <div style={{ height: 80 }}></div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { HoyScreen, TodosScreen, CalendarioScreen, HistorialScreen, MonthRangePicker, filterByPeriod, periodLabel, sortAseos, groupByDay });

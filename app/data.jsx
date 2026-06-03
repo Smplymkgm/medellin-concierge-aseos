@@ -4,7 +4,7 @@
    Swap freely for live Sheets data; field names mirror the columns.
    ============================================================ */
 
-const TODAY = (function() { var d = new Date(); d.setHours(0,0,0,0); return d; })();
+const TODAY = (function() { var t = new Date(); t.setHours(0,0,0,0); return t; })();
 
 const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const MONTHS_SHORT = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];

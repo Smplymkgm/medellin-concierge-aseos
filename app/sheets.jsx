@@ -182,41 +182,30 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
           {/* STEP 3 — Fotos y videos */}
           {step === 3 && (
             <>
-              <div className="wiz-blurb">Sube el video del aseo a tu carpeta de Drive. Una vez subido, marca el checkbox y completa.</div>
-              {(() => {
-                const DRIVE_FOLDERS = {
-                  'Ana': 'https://drive.google.com/drive/folders/10W-jiDs0J9DC-JGF5EbKlgV_PNwjdvOW',
-                  'Fernanda': 'https://drive.google.com/drive/folders/1qSXRueE1pI68uh6y9Zo2gOo0Zktq0JBm',
-                  'María Fernanda': 'https://drive.google.com/drive/folders/1qSXRueE1pI68uh6y9Zo2gOo0Zktq0JBm',
-                };
-                const folderUrl = a.asignada && DRIVE_FOLDERS[a.asignada];
-                return (
-                  <>
-                    <div className="upload-zone" onClick={() => folderUrl && window.open(folderUrl, '_blank')} style={{ cursor: folderUrl ? 'pointer' : 'default' }}>
-                      <Icon name="upload" size={24} />
-                      <div className="h3">Abrir carpeta de Drive</div>
-                      <div className="caption">{folderUrl ? 'Sube el video a tu carpeta · ' + (a.asignada || '') : 'Carpeta no configurada'}</div>
+              <div className="wiz-blurb">Carga el video y las fotos que confirmen el estado de la propiedad. Si hay daños, incluye soporte de eso también. Se guarda en la carpeta de Drive de la propiedad.</div>
+              {!file ? (
+                <div className="upload-zone" onClick={simulateVideo}>
+                  <Icon name="upload" size={24} />
+                  <div className="h3">Seleccionar video</div>
+                  <div className="caption">Carpeta: Registros de limpieza · {a.codigo}</div>
+                  <input ref={fileRef} type="file" accept="video/*" hidden onChange={pickFile} />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="file-preview">
+                    <div className="file-thumb"><Icon name="video" size={20} /></div>
+                    <div className="file-info">
+                      <div className="file-name">{file.name}</div>
+                      <div className="caption">{fmtSize(file.size)}{uploading ? ' · subiendo…' : ' · listo'}</div>
                     </div>
-                    <div style={{ marginTop: 16, padding: 12, background: 'var(--surface-2, #f5f5f5)', borderRadius: 8 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={progress >= 100} onChange={(e) => {
-                          if (e.target.checked) {
-                            const dt = a ? a.checkout : TODAY;
-                            const stamp = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
-                            setFile({ name: stamp + '_' + (a.asignada || 'video') + '_' + a.codigo + '.mp4', size: 0 });
-                            setProgress(100);
-                            setUploading(false);
-                          } else {
-                            setFile(null);
-                            setProgress(0);
-                          }
-                        }} />
-                        <span>Ya subí el video a la carpeta de Drive</span>
-                      </label>
-                    </div>
-                  </>
-                );
-              })()}
+                    {!uploading && progress >= 100 && <Icon name="check" size={20} style={{ color: 'var(--state-done)' }} />}
+                  </div>
+                  <div className="progress"><div className="progress-bar" style={{ width: progress + '%' }}></div></div>
+                  {!uploading && progress >= 100 && (
+                    <button className="linkbtn" style={{ alignSelf: 'flex-start' }} onClick={simulateVideo}>Reemplazar archivo</button>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -520,4 +509,57 @@ function AgregarAseadoraSheet({ open, onClose, onAdd }) {
   );
 }
 
-Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet });
+/* ---- Editar aseadora: nombre/PIN/tel/email ---- */
+function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
+  const [pin, setPin]     = useStateS('');
+  const [tel, setTel]     = useStateS('');
+  const [email, setEmail] = useStateS('');
+  useEffectS(() => {
+    if (open && persona) {
+      setPin(persona.pin || '');
+      setTel(persona.tel || '');
+      setEmail(persona.email || '');
+    }
+  }, [open, persona]);
+
+  if (!persona) return null;
+
+  const pinOk = !pin || /^\d{4}$/.test(pin);
+  const canSave = pinOk;
+
+  const footer = (
+    <button className="btn btn-primary btn-block btn-lg" disabled={!canSave}
+      onClick={() => onSave(persona, { pin: pin, tel: tel.trim(), email: email.trim() })}>Guardar cambios</button>
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} title={'Editar ' + persona.nombre} footer={footer} height="auto">
+      <div className="row gap-base" style={{ marginBottom: 20 }}>
+        <div className="team-avatar">{initials(persona.nombre).toUpperCase()}</div>
+        <div>
+          <div className="h3">{persona.nombre}</div>
+          <div className="caption sec">{persona.rol === 'admin' ? 'Administradora' : 'Aseadora'}</div>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="label">PIN (4 dígitos)</label>
+        <input className="text-input" inputMode="numeric" maxLength="4" value={pin}
+          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="0000"
+          style={{ letterSpacing: '0.3em', fontVariantNumeric: 'tabular-nums' }} />
+      </div>
+
+      <div className="form-group">
+        <label className="label">Teléfono</label>
+        <input className="text-input" inputMode="tel" value={tel} onChange={e => setTel(e.target.value)} placeholder="+57 300 000 0000" />
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Email</label>
+        <input className="text-input" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nombre@medcon.co" />
+      </div>
+    </Sheet>
+  );
+}
+
+Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet, EditarAseadoraSheet });

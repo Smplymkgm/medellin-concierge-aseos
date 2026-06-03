@@ -12,6 +12,24 @@ function gasPost(body) {
   }).then(r => r.json());
 }
 
+/* ---- Session persistence ---- */
+const SESSION_KEY = 'medcon_session_v1';
+function loadSession() {
+  try {
+    var raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    if (!s || !s.nombre || !s.rol) return null;
+    return s;
+  } catch (e) { return null; }
+}
+function saveSession(s) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
+
 /* Parse "dd/MM/yyyy" → Date */
 function parseDateStr(s) {
   if (!s) return new Date();
@@ -151,13 +169,15 @@ function Login({ personalList, onLogin }) {
    Root App
    ============================================================ */
 function App() {
-  const [session, setSession]   = useStateL(null);
+  const [session, setSession]   = useStateL(loadSession);
   const [aseos, setAseos]       = useStateL(() => ASEOS.map(a => ({ ...a })));
   const [props, setProps]       = useStateL(getProps);
   const [personal, setPersonal] = useStateL(getPersonal);
   const [editProp, setEditProp] = useStateL(null);
   const [editPropOpen, setEditPropOpen]   = useStateL(false);
   const [addCleanerOpen, setAddCleanerOpen] = useStateL(false);
+  const [editCleaner, setEditCleaner]       = useStateL(null);
+  const [editCleanerOpen, setEditCleanerOpen] = useStateL(false);
   const [tab, setTab]           = useStateL('hoy');
   const [openId, setOpenId]     = useStateL(null);
   const [propId, setPropId]     = useStateL(null);
@@ -203,15 +223,8 @@ function App() {
       });
   }, []);
 
-  function login(userInfo) {
-    const nombre = userInfo.nombre;
-    const rol    = userInfo.rol;
-    setSession(userInfo);
-    setTab(rol === 'admin' ? 'aseos' : 'hoy');
-    setOpenId(null); setPropId(null);
-
-    // Fetch real data from API
-    gasPost({ action: 'getDatos', nombre, rol })
+  function loadDataFor(nombre, rol) {
+    return gasPost({ action: 'getDatos', nombre: nombre, rol: rol })
       .then(function(res) {
         if (res.ok && res.data) {
           const realAseos    = transformAseos(res.data.aseos);
@@ -224,7 +237,26 @@ function App() {
       })
       .catch(function() {});
   }
-  function logout() { setSession(null); }
+
+  function login(userInfo) {
+    const nombre = userInfo.nombre;
+    const rol    = userInfo.rol;
+    saveSession(userInfo);
+    setSession(userInfo);
+    setTab(rol === 'admin' ? 'aseos' : 'hoy');
+    setOpenId(null); setPropId(null);
+    loadDataFor(nombre, rol);
+  }
+  function logout() { clearSession(); setSession(null); }
+
+  // Rehydrate: if a session was restored from localStorage on mount, fetch fresh data
+  useEffectL(function() {
+    if (session && session.nombre && session.rol) {
+      loadDataFor(session.nombre, session.rol);
+      setTab(session.rol === 'admin' ? 'aseos' : 'hoy');
+    }
+  // eslint-disable-next-line
+  }, []);
 
   function toggle(id) { setOpenId(o => o === id ? null : id); }
   function shiftMonth(dir) {
@@ -247,19 +279,19 @@ function App() {
       : x));
     setCompletarOpen(false); setOpenId(null);
 
-    // Save to Google Sheets with all form data
+    // Save full form to Google Sheets (cols 14-20 via handleCompletarAseo)
     gasPost({
-      action: 'completarAseo',
-      codigo: a.codigo,
-      nombre: session.nombre,
-      entrada: payload.entrada,
-      salida: payload.salida,
-      notas: payload.notas || '',
-      revision: payload.revision,
-      reposicion: payload.reposicion,
-      funcionamiento: payload.funcionamiento,
-      reporte: payload.reporte || '',
-      video: payload.file && payload.file.name,
+      action:    'completarAseo',
+      codigo:    a.codigo,
+      nombre:    session.nombre,
+      notas:     payload.notas || '',
+      entrada:   payload.entrada || '',
+      salida:    payload.salida || '',
+      revision:       payload.revision || null,
+      reposicion:     payload.reposicion || null,
+      funcionamiento: payload.funcionamiento || null,
+      reporte:   payload.reporte || '',
+      videoLink: (payload.file && payload.file.name) || '',
     }).catch(function() {});
 
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
@@ -272,6 +304,20 @@ function App() {
       : x));
     setReassignOpen(false);
     showToast(who ? 'Asignado a ' + who : 'Aseo sin asignar');
+
+    // Persist to spreadsheet (Fase 6)
+    gasPost({ action: 'asignarAseo', codigo: a.codigo, aseadora: who || '' })
+      .then(function(res) {
+        if (!res || !res.ok) {
+          // Roll back UI on failure
+          setAseos(list => list.map(x => x.codigo === a.codigo ? { ...x, asignada: a.asignada || null } : x));
+          showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(function() {
+        setAseos(list => list.map(x => x.codigo === a.codigo ? { ...x, asignada: a.asignada || null } : x));
+        showToast('Error de conexión, no se guardó');
+      });
   }
   function openEditProp(id) { setEditProp(props.find(p => p.id === id) || null); setEditPropOpen(true); }
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
@@ -305,6 +351,35 @@ function App() {
     setAddCleanerOpen(false);
     showToast('Aseadora creada · ' + nueva.codigo);
   }
+  function openEditCleaner(persona) { setEditCleaner(persona); setEditCleanerOpen(true); }
+  function doSaveCleaner(persona, cambios) {
+    const next = personal.map(p => p.nombre === persona.nombre
+      ? { ...p, pin: cambios.pin || p.pin, tel: cambios.tel, email: cambios.email }
+      : p);
+    setLivePersonal(next); setPersonal(next);
+    setEditCleanerOpen(false);
+    showToast('Guardando…');
+
+    gasPost({
+      action: 'actualizarPersonal',
+      nombre: persona.nombre,
+      datos: {
+        pin:      cambios.pin || persona.pin,
+        telefono: cambios.tel,
+        email:    cambios.email,
+      }
+    }).then(res => {
+      if (res && res.ok) showToast('Datos guardados');
+      else {
+        // rollback
+        setLivePersonal(personal); setPersonal(personal);
+        showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => {
+      setLivePersonal(personal); setPersonal(personal);
+      showToast('Error de conexión, no se guardó');
+    });
+  }
 
   function doAgregar(data) {
     const prop = propById(data.propId);
@@ -321,8 +396,8 @@ function App() {
     showToast('Aseo agregado · ' + prop.nombre);
   }
 
-  // Loading screen while fetching personal list
-  if (loadingPersonal) {
+  // Loading screen while fetching personal list (skip if session already restored)
+  if (loadingPersonal && !session) {
     return (
       <div className="stage">
         <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
@@ -348,21 +423,26 @@ function App() {
   const ctx = {
     user: session.nombre, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
-    openEditProp, openAddProp, openAddCleaner,
+    openEditProp, openAddProp, openAddCleaner, openEditCleaner,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
-    filter, setFilter, openSync: () => showToast('Sincronizando con Airbnb…'),
+    filter, setFilter,
+    openSync: () => {
+      showToast('Actualizando…');
+      loadDataFor(session.nombre, session.rol).then(() => showToast('Datos actualizados'));
+    },
   };
 
   // urgent count for nav badge
   const urgentMine = aseos.filter(a => (isAdmin ? true : a.asignada === session.nombre) && (a.status === 'urgent' || a.priority) && a.status !== 'done').length;
 
   const cleanerTabs = [
-    { id: 'hoy', label: 'Hoy', icon: 'list', badge: urgentMine || null },
+    { id: 'hoy', label: 'Aseos', icon: 'list', badge: urgentMine || null },
     { id: 'calendario', label: 'Calendario', icon: 'calendar' },
     { id: 'historial', label: 'Historial', icon: 'check' },
   ];
   const adminTabs = [
     { id: 'aseos', label: 'Aseos', icon: 'list', badge: urgentMine || null },
+    { id: 'historial', label: 'Historial', icon: 'check' },
     { id: 'calendario', label: 'Calendario', icon: 'calendar' },
     { id: 'propiedades', label: 'Propiedades', icon: 'home' },
     { id: 'personal', label: 'Personal', icon: 'users' },
@@ -373,6 +453,7 @@ function App() {
     screen = <PropiedadDetail ctx={ctx} propId={propId} />;
   } else if (isAdmin) {
     if (tab === 'aseos') screen = <AseosScreen ctx={ctx} />;
+    else if (tab === 'historial') screen = <HistorialAdminScreen ctx={ctx} />;
     else if (tab === 'calendario') screen = <CalendarioScreen ctx={ctx} role="admin" />;
     else if (tab === 'propiedades') screen = <PropiedadesScreen ctx={ctx} />;
     else screen = <PersonalScreen ctx={ctx} />;
@@ -405,6 +486,7 @@ function App() {
         <AgregarAseoSheet open={agregarOpen} onClose={() => setAgregarOpen(false)} onAdd={doAgregar} />
         <EditarPropiedadSheet open={editPropOpen} prop={editProp} onClose={() => setEditPropOpen(false)} onSave={doSaveProp} />
         <AgregarAseadoraSheet open={addCleanerOpen} onClose={() => setAddCleanerOpen(false)} onAdd={doAddCleaner} />
+        <EditarAseadoraSheet open={editCleanerOpen} persona={editCleaner} onClose={() => setEditCleanerOpen(false)} onSave={doSaveCleaner} />
 
         {toast && <div className="toast">{toast}</div>}
       </div>
