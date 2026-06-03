@@ -131,6 +131,10 @@ function doPost(e) {
       compartirTodosLosVideos();
       return respond(true, { done: true });
     }
+    if (action === "runRecuperarLinks") {
+      var st = recuperarLinksVideos();
+      return respond(true, st);
+    }
     if (action === "inspectVideos") {
       var h = getSS().getSheetByName(CONFIG.hojaVideos);
       var lr = h ? h.getLastRow() : 0;
@@ -1431,6 +1435,7 @@ function onOpen() {
     .addItem("Migrar form viejo (JSON → columnas)", "migrarFormJsonAColumnas")
     .addItem("Convertir links de video a HYPERLINK", "convertirVideosAHyperlink")
     .addItem("Compartir todos los videos (anyone w/ link)", "compartirTodosLosVideos")
+    .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
     .addToUi();
 }
 
@@ -1883,6 +1888,101 @@ function compartirTodosLosVideos() {
   }
   getSS().toast(nFolders + " carpetas · " + nFiles + " archivos compartidos" + (errs ? " · " + errs + " errores" : ""), "Compartir", 6);
   Logger.log("compartirTodosLosVideos: folders=" + nFolders + " files=" + nFiles + " errs=" + errs);
+}
+
+// ============================================================
+// RECUPERAR LINKS DE VIDEOS — para filenames sin URL (caso Safari CORS)
+// ============================================================
+// Para cada celda con un filename suelto (no URL), busca el archivo en
+// Drive (toda la jerarquía de Medellin Concierge - Videos Aseos), y
+// reescribe la celda como HYPERLINK al fileId real.
+
+function recuperarLinksVideos() {
+  var ss = getSS();
+  var raiz = getCarpetaRaiz();
+
+  // 1. Construir mapa filename → fileId recorriendo TODOS los subfolders
+  var mapa = {};
+  var subs = raiz.getFolders();
+  var foldersWalked = 0;
+  while (subs.hasNext()) {
+    foldersWalked++;
+    var sf = subs.next();
+    var files = sf.getFiles();
+    while (files.hasNext()) {
+      var f = files.next();
+      var name = f.getName();
+      // Permitir múltiples archivos con el mismo nombre — quedarse con el más reciente
+      if (!mapa[name] || mapa[name].date < f.getLastUpdated().getTime()) {
+        mapa[name] = { id: f.getId(), date: f.getLastUpdated().getTime() };
+        // Compartir mientras estamos aquí
+        try { compartirAnyoneViewer(f); } catch(e) {}
+      }
+    }
+  }
+  Logger.log("Map Drive: " + Object.keys(mapa).length + " files, " + foldersWalked + " folders");
+
+  var stats = { aseos: 0, videos: 0, notFound: 0 };
+
+  // 2. Patch Aseos col 37
+  var ha = ss.getSheetByName(CONFIG.hojaAseos);
+  if (ha && ha.getLastRow() >= 2 && ha.getLastColumn() >= 37) {
+    var lr = ha.getLastRow();
+    var vals = ha.getRange(2, 37, lr - 1, 1).getValues();
+    var fms  = ha.getRange(2, 37, lr - 1, 1).getFormulas();
+    var ups = [];
+    var any = false;
+    for (var i = 0; i < vals.length; i++) {
+      var cur = String(vals[i][0] || "").trim();
+      var hasF = !!fms[i][0];
+      if (hasF || !cur || cur.indexOf("http") === 0) {
+        ups.push([vals[i][0]]);
+        continue;
+      }
+      if (mapa[cur]) {
+        var url = "https://drive.google.com/file/d/" + mapa[cur].id + "/view";
+        ups.push([buildHyperlink(url, "Ver video")]);
+        any = true;
+        stats.aseos++;
+      } else {
+        ups.push([vals[i][0]]);
+        stats.notFound++;
+      }
+    }
+    if (any) ha.getRange(2, 37, lr - 1, 1).setValues(ups);
+  }
+
+  // 3. Patch Videos Aseos col 5
+  var hv = ss.getSheetByName(CONFIG.hojaVideos);
+  if (hv && hv.getLastRow() >= 2) {
+    var lr2 = hv.getLastRow();
+    var vals2 = hv.getRange(2, 5, lr2 - 1, 1).getValues();
+    var fms2  = hv.getRange(2, 5, lr2 - 1, 1).getFormulas();
+    var codigos2 = hv.getRange(2, 1, lr2 - 1, 1).getValues();
+    var ups2 = [];
+    var any2 = false;
+    for (var j = 0; j < vals2.length; j++) {
+      var cur2 = String(vals2[j][0] || "").trim();
+      var hasF2 = !!fms2[j][0];
+      if (hasF2 || !cur2 || cur2.indexOf("http") === 0) {
+        ups2.push([vals2[j][0]]);
+        continue;
+      }
+      if (mapa[cur2]) {
+        var url2 = "https://drive.google.com/file/d/" + mapa[cur2].id + "/view";
+        ups2.push([buildHyperlink(url2, "Ver video · " + codigos2[j][0])]);
+        any2 = true;
+        stats.videos++;
+      } else {
+        ups2.push([vals2[j][0]]);
+      }
+    }
+    if (any2) hv.getRange(2, 5, lr2 - 1, 1).setValues(ups2);
+  }
+
+  ss.toast("Aseos: " + stats.aseos + " · Videos: " + stats.videos + " · Sin match: " + stats.notFound, "Recuperar links", 8);
+  Logger.log("recuperarLinksVideos: " + JSON.stringify(stats));
+  return stats;
 }
 
 // ============================================================
