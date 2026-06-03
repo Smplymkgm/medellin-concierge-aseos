@@ -33,22 +33,70 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
 
   const a = aseo ? aseoEnriched(aseo) : null;
 
-  function startUpload(name, size) {
-    setFile({ name, size });
-    setUploading(true); setProgress(0);
-    clearInterval(timer.current);
-    timer.current = setInterval(() => {
-      setProgress(p => {
-        if (p >= 100) { clearInterval(timer.current); setUploading(false); return 100; }
-        return Math.min(100, p + Math.random() * 18 + 6);
-      });
-    }, 220);
+  function realUpload(f) {
+    setFile({ name: f.name, size: f.size });
+    setUploading(true);
+    setProgress(0);
+
+    // 1. Pedir resumable URL al backend
+    gasPost({
+      action: 'getUploadUrl',
+      codigo: a.codigo,
+      propiedad: a.propNombre,
+      filename: f.name,
+    }).then(res => {
+      if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo iniciar upload');
+      const data = res.data || {};
+      const uploadUrl = data.uploadUrl;
+      const finalName = data.filename || f.name;
+      if (!uploadUrl) throw new Error('Sin uploadUrl');
+
+      // 2. PUT al resumable URL con progreso real
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', f.type || 'video/mp4');
+      xhr.upload.onprogress = ev => {
+        if (ev.lengthComputable) setProgress(Math.round(ev.loaded / ev.total * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          let fileId = '';
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            fileId = resp.id || '';
+          } catch (e) {}
+          const link = fileId ? ('https://drive.google.com/file/d/' + fileId + '/view') : '';
+          setFile({ name: finalName, size: f.size, fileId: fileId, link: link, mime: f.type });
+          setProgress(100);
+          setUploading(false);
+          // 3. Registrar en hoja Videos Aseos (best-effort)
+          if (fileId) {
+            gasPost({
+              action: 'registrarVideo',
+              codigo: a.codigo,
+              propiedad: a.propNombre,
+              aseadora: a.asignada || '',
+              checkout: '',
+              fileId: fileId,
+              notas: '',
+            }).catch(() => {});
+          }
+        } else {
+          setUploading(false);
+          alert('Error subiendo (' + xhr.status + '): ' + (xhr.responseText || '').slice(0, 200));
+        }
+      };
+      xhr.onerror = () => { setUploading(false); alert('Error de red durante el upload'); };
+      xhr.send(f);
+    }).catch(err => {
+      setUploading(false);
+      alert('Error: ' + (err && err.message || err));
+    });
   }
-  function pickFile(e) { const f = e.target.files && e.target.files[0]; if (f) startUpload(f.name, f.size); }
-  function simulateVideo() {
-    const dt = a ? a.checkout : TODAY;
-    const stamp = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
-    startUpload(stamp + '_video_aseo.mp4', 48234123);
+  function pickFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (f) realUpload(f);
+    e.target.value = '';
   }
   function fmtSize(b) { return b > 1e6 ? (b/1e6).toFixed(1) + ' MB' : Math.round(b/1e3) + ' KB'; }
 
@@ -182,13 +230,13 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
           {/* STEP 3 — Fotos y videos */}
           {step === 3 && (
             <>
-              <div className="wiz-blurb">Carga el video y las fotos que confirmen el estado de la propiedad. Si hay daños, incluye soporte de eso también. Se guarda en la carpeta de Drive de la propiedad.</div>
+              <div className="wiz-blurb">Carga el video del aseo desde tu galería o grábalo con la cámara. Se guarda automáticamente en Drive en la carpeta de la propiedad.</div>
+              <input ref={fileRef} type="file" accept="video/*" hidden onChange={pickFile} />
               {!file ? (
-                <div className="upload-zone" onClick={simulateVideo}>
+                <div className="upload-zone" onClick={() => fileRef.current && fileRef.current.click()}>
                   <Icon name="upload" size={24} />
                   <div className="h3">Seleccionar video</div>
-                  <div className="caption">Carpeta: Registros de limpieza · {a.codigo}</div>
-                  <input ref={fileRef} type="file" accept="video/*" hidden onChange={pickFile} />
+                  <div className="caption">Galería o cámara · Carpeta: {a.propNombre}</div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -196,13 +244,16 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
                     <div className="file-thumb"><Icon name="video" size={20} /></div>
                     <div className="file-info">
                       <div className="file-name">{file.name}</div>
-                      <div className="caption">{fmtSize(file.size)}{uploading ? ' · subiendo…' : ' · listo'}</div>
+                      <div className="caption">{fmtSize(file.size)}{uploading ? (' · subiendo ' + progress + '%') : ' · subido a Drive'}</div>
                     </div>
                     {!uploading && progress >= 100 && <Icon name="check" size={20} style={{ color: 'var(--state-done)' }} />}
                   </div>
                   <div className="progress"><div className="progress-bar" style={{ width: progress + '%' }}></div></div>
                   {!uploading && progress >= 100 && (
-                    <button className="linkbtn" style={{ alignSelf: 'flex-start' }} onClick={simulateVideo}>Reemplazar archivo</button>
+                    <div className="row gap-base" style={{ flexWrap: 'wrap' }}>
+                      <button className="linkbtn" onClick={() => fileRef.current && fileRef.current.click()}>Reemplazar archivo</button>
+                      {file.link && <a className="linkbtn" href={file.link} target="_blank" rel="noopener">Ver en Drive</a>}
+                    </div>
                   )}
                 </div>
               )}
