@@ -123,6 +123,39 @@ function doPost(e) {
       migrarFormJsonAColumnas();
       return respond(true, { done: true });
     }
+    if (action === "runConvertirVideos") {
+      convertirVideosAHyperlink();
+      return respond(true, { done: true });
+    }
+    if (action === "runCompartirVideos") {
+      compartirTodosLosVideos();
+      return respond(true, { done: true });
+    }
+    if (action === "inspectVideos") {
+      var h = getSS().getSheetByName(CONFIG.hojaVideos);
+      var lr = h ? h.getLastRow() : 0;
+      var rows = lr >= 2 ? h.getRange(2, 1, lr - 1, 7).getValues() : [];
+      var formulas = lr >= 2 ? h.getRange(2, 5, lr - 1, 1).getFormulas() : [];
+      var ha = getSS().getSheetByName(CONFIG.hojaAseos);
+      var lra = ha ? ha.getLastRow() : 0;
+      var aseosVideos = [];
+      if (ha && lra >= 2 && ha.getLastColumn() >= 37) {
+        var v = ha.getRange(2, 37, lra - 1, 1).getValues();
+        var fa = ha.getRange(2, 37, lra - 1, 1).getFormulas();
+        var codigos = ha.getRange(2, 1, lra - 1, 1).getValues();
+        for (var i = 0; i < v.length; i++) {
+          if (v[i][0] || fa[i][0]) {
+            aseosVideos.push({ codigo: codigos[i][0], val: v[i][0], formula: fa[i][0] });
+          }
+        }
+      }
+      return respond(true, {
+        videosSheet: rows.map(function(r, i) {
+          return { codigo: r[0], link: r[4], formula: formulas[i][0] };
+        }),
+        aseosVideos: aseosVideos,
+      });
+    }
 
     if (action === "debug") {
       var ss2 = getSS();
