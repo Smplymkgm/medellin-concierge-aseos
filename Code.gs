@@ -273,10 +273,58 @@ function handleGetAseos(body) {
 function ensureAseosFormColumns(hoja) {
   var lastCol = hoja.getLastColumn();
   if (lastCol >= 20) return;
-  var headers = ["Entrada","Salida","Revision","Reposicion","Funcionamiento","Reporte","Video"];
+  var headers = ["Entrada","Salida","Revisión","Reposición","Funcionamiento","Reporte","Video"];
   hoja.getRange(1, lastCol + 1, 1, headers.length - (lastCol - 13))
     .setValues([headers.slice(lastCol - 13)])
     .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
+  // Anchos cómodos para texto multi-línea
+  var widths = [70, 70, 200, 200, 220, 240, 260];
+  for (var i = 0; i < widths.length; i++) hoja.setColumnWidth(14 + i, widths[i]);
+}
+
+// Labels para renderizar legible en el spreadsheet (espejo de data.jsx)
+var LABELS_REVISION = {
+  habitaciones: "Habitaciones",
+  cocina:       "Cocina / Comedor",
+  sala:         "Sala / Sala de estar",
+  banos:        "Baños",
+  balcon:       "Balcón / Terraza",
+  util:         "Cuarto útil",
+};
+var LABELS_REPOSICION = {
+  jabon:       "Jabón y shampoo",
+  papelBano:   "Papel de baño",
+  papelCocina: "Papel de cocina",
+  panitos:     "Pañitos de cocina",
+  bolsas:      "Bolsas en contenedores",
+};
+var LABELS_FUNCIONA = {
+  interruptores: "Interruptores/bombillos",
+  puertas:       "Puertas",
+  aires:         "Aires acondicionados",
+  ventanas:      "Ventanas",
+  mesas:         "Mesas/barras",
+  sofas:         "Sofás/sillas",
+  camas:         "Camas",
+  tvs:           "Televisores",
+  lavadora:      "Lavadora/secadora",
+};
+
+function fmtCheckObj(obj, labels) {
+  if (!obj) return "";
+  var lines = [];
+  for (var key in labels) {
+    if (!labels.hasOwnProperty(key)) continue;
+    var val = obj[key];
+    if (val === undefined || val === null || val === "") continue;
+    var icon;
+    if (val === "ok" || val === true) icon = "✓";
+    else if (val === "review" || val === false) icon = "⚠";
+    else if (val === "na") icon = "—";
+    else icon = "•";
+    lines.push(icon + " " + labels[key]);
+  }
+  return lines.join("\n");
 }
 
 function handleCompletarAseo(body) {
@@ -286,9 +334,15 @@ function handleCompletarAseo(body) {
   var videoLink = String(body.videoLink || body.video || "").trim();
   var entrada   = String(body.entrada   || "").trim();
   var salida    = String(body.salida    || "").trim();
-  var revision       = body.revision       ? JSON.stringify(body.revision)       : "";
-  var reposicion     = body.reposicion     ? JSON.stringify(body.reposicion)     : "";
-  var funcionamiento = body.funcionamiento ? JSON.stringify(body.funcionamiento) : "";
+  // Versión legible para humanos en la hoja (multi-línea con ✓/⚠/—).
+  // El JSON crudo va en la nota de la celda por si necesitas la estructura
+  // exacta más adelante.
+  var revision       = fmtCheckObj(body.revision,       LABELS_REVISION);
+  var reposicion     = fmtCheckObj(body.reposicion,     LABELS_REPOSICION);
+  var funcionamiento = fmtCheckObj(body.funcionamiento, LABELS_FUNCIONA);
+  var revisionJson       = body.revision       ? JSON.stringify(body.revision)       : "";
+  var reposicionJson     = body.reposicion     ? JSON.stringify(body.reposicion)     : "";
+  var funcionamientoJson = body.funcionamiento ? JSON.stringify(body.funcionamiento) : "";
   var reporte   = String(body.reporte   || "").trim();
 
   if (!codigo || !nombre) return respond(false, null, "Codigo y nombre requeridos");
@@ -327,7 +381,15 @@ function handleCompletarAseo(body) {
       if (notas) hoja.getRange(fila, 10).setValue(notas);
 
       // Batch write para columnas del form (14-20) en un solo setValues
-      hoja.getRange(fila, 14, 1, 7).setValues([[entrada, salida, revision, reposicion, funcionamiento, reporte, videoLink]]);
+      var formRange = hoja.getRange(fila, 14, 1, 7);
+      formRange.setValues([[entrada, salida, revision, reposicion, funcionamiento, reporte, videoLink]])
+        .setWrap(true)
+        .setVerticalAlignment("top");
+
+      // Guardar JSON crudo en notas para acceso programático futuro
+      if (revisionJson)       hoja.getRange(fila, 16).setNote(revisionJson);
+      if (reposicionJson)     hoja.getRange(fila, 17).setNote(reposicionJson);
+      if (funcionamientoJson) hoja.getRange(fila, 18).setNote(funcionamientoJson);
 
       hoja.getRange(fila, 1, 1, 20).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
 
