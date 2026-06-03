@@ -31,7 +31,7 @@ function AseosScreen({ ctx }) {
   return (
     <div className="scrollarea">
       <AppBar title="Aseos" subtitle={list.length + ' programados'} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
 
       <div className="filters">
         <div className="chips">
@@ -172,7 +172,7 @@ function PersonalScreen({ ctx }) {
   return (
     <div className="scrollarea">
       <AppBar title="Personal" subtitle={cleaners.length + ' aseadoras'} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <div className="team-list">
         {cleaners.map(c => {
           const done = ctx.aseos.filter(a => a.asignada === c.nombre && a.status === 'done' && a.checkout.getMonth() === TODAY.getMonth() && a.checkout.getFullYear() === TODAY.getFullYear());
