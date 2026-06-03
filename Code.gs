@@ -810,16 +810,35 @@ function handleGetUploadUrl(body) {
     } catch(e) {
       return respond(false, null, "No se pudo crear carpeta Drive: " + e.message);
     }
+  } else {
+    // Si el folder existe pero su nombre no coincide con el nombre actual
+    // de la propiedad (caso: el admin renombró la propiedad después de
+    // crear el folder), renombrar el folder para que matchee.
+    try {
+      var folder = DriveApp.getFolderById(folderId);
+      if (folder.getName() !== propiedad) folder.setName(propiedad);
+    } catch(e) { Logger.log("Folder rename skipped: " + e.message); }
   }
 
   try {
     var token = ScriptApp.getOAuthToken();
     var fecha = hoyStr().replace(/\//g, "-");
-    // Limpiar filenames del iPhone que vienen como UUID raro
-    // (1aa22088-e4fd-...mov) — los reemplazamos con un nombre legible.
     var ext = (filename.match(/\.([a-zA-Z0-9]+)$/) || [, "mp4"])[1];
     var safeAseadora = String(body.aseadora || "").replace(/[^A-Za-z0-9]/g, "");
-    var nombreArchivo = fecha + "_" + codigo + (safeAseadora ? "_" + safeAseadora : "") + "_video." + ext;
+    var baseNombre = fecha + "_" + codigo + (safeAseadora ? "_" + safeAseadora : "") + "_video";
+    var nombreArchivo = baseNombre + "." + ext;
+
+    // Si ya existe un archivo con ese nombre en la carpeta, suffix -2, -3…
+    try {
+      var fld = DriveApp.getFolderById(folderId);
+      var n = 1;
+      while (fld.getFilesByName(nombreArchivo).hasNext()) {
+        n++;
+        nombreArchivo = baseNombre + "-" + n + "." + ext;
+        if (n > 50) break; // safety
+      }
+    } catch(e) {}
+
     var metadata = { name: nombreArchivo, parents: [folderId] };
 
     var response = UrlFetchApp.fetch(
