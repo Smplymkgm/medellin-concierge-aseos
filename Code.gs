@@ -104,6 +104,7 @@ function doPost(e) {
     if (action === "agregarAseo")         return handleAgregarAseo(body);
     if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
+    if (action === "runSelfTest")         return respond(true, runSelfTest());
 
     if (action === "debug") {
       var ss2 = getSS();
@@ -1025,6 +1026,8 @@ function onOpen() {
     .addItem("Agregar Admin a Personal",      "agregarAdmin")
     .addSeparator()
     .addItem("Limpiar hojas duplicadas con emojis", "limpiarHojasDuplicadas")
+    .addSeparator()
+    .addItem("Self-test (diagnóstico)",             "runSelfTest")
     .addToUi();
 }
 
@@ -1223,3 +1226,104 @@ function fixSheetNames() {
 }
 
 function getSpreadsheetId() { Logger.log(getSS().getId()); }
+
+// ============================================================
+// SELF-TEST — diagnóstico end-to-end. Correr desde menú o vía
+// doPost({action:"runSelfTest"}). No modifica datos.
+// ============================================================
+
+function runSelfTest() {
+  var results = [];
+  function check(name, fn) {
+    try {
+      var msg = fn();
+      results.push({ name: name, ok: true, info: msg || "" });
+    } catch(e) {
+      results.push({ name: name, ok: false, info: e.message });
+    }
+  }
+
+  check("Spreadsheet accesible", function() {
+    var ss = getSS();
+    return ss.getName();
+  });
+
+  check("Hoja Personal", function() {
+    var hoja = getSS().getSheetByName(CONFIG.hojaPersonal);
+    if (!hoja) throw new Error("no existe");
+    return "rows=" + hoja.getLastRow();
+  });
+
+  check("Hoja Propiedades", function() {
+    var hoja = getSS().getSheetByName(CONFIG.hojaPropiedades);
+    if (!hoja) throw new Error("no existe");
+    return "rows=" + hoja.getLastRow();
+  });
+
+  check("Hoja Aseos", function() {
+    var hoja = getSS().getSheetByName(CONFIG.hojaAseos);
+    if (!hoja) throw new Error("no existe");
+    var cols = hoja.getLastColumn();
+    return "rows=" + hoja.getLastRow() + " cols=" + cols + (cols >= 20 ? " (form cols OK)" : " (faltan cols 14-20 del form)");
+  });
+
+  check("Hoja Maestra", function() {
+    var hoja = getSS().getSheetByName(CONFIG.hojaMaestra);
+    if (!hoja) throw new Error("no existe");
+    return "rows=" + hoja.getLastRow();
+  });
+
+  check("getPersonal devuelve usuarios", function() {
+    var p = getPersonal();
+    if (!p.length) throw new Error("vacío");
+    var hasAdmin = p.some(function(u){ return u.nombre.toLowerCase() === "admin"; });
+    return "n=" + p.length + (hasAdmin ? " (Admin OK)" : " (sin Admin!)");
+  });
+
+  check("getPropiedades devuelve catálogo", function() {
+    var props = getPropiedades();
+    if (!props.length) throw new Error("vacío");
+    var conIcal = props.filter(function(p){ return p.icalUrl; }).length;
+    return "n=" + props.length + " conIcal=" + conIcal;
+  });
+
+  check("getAllAseos devuelve datos", function() {
+    var a = getAllAseos();
+    return "n=" + a.length;
+  });
+
+  check("Hojas con nombre limpio (sin emojis corruptos)", function() {
+    var sheets = getSS().getSheets();
+    var corruptas = sheets.filter(function(s){
+      return /^[^A-Za-z0-9]/.test(s.getName());
+    });
+    if (corruptas.length) {
+      throw new Error("encontradas: " + corruptas.map(function(s){return s.getName();}).join(", "));
+    }
+    return "n=" + sheets.length;
+  });
+
+  check("Triggers programados existen", function() {
+    var t = ScriptApp.getProjectTriggers();
+    var names = t.map(function(x){ return x.getHandlerFunction(); });
+    var requeridos = ["sincronizarCalendarios", "sincronizarGoogleCalendar", "autoCompletarAseosPasados"];
+    var faltan = requeridos.filter(function(r){ return names.indexOf(r) === -1; });
+    if (faltan.length) throw new Error("faltan triggers: " + faltan.join(", "));
+    return "n=" + t.length;
+  });
+
+  var passed = results.filter(function(r){ return r.ok; }).length;
+  var failed = results.filter(function(r){ return !r.ok; }).length;
+
+  var msg = "Self-test: " + passed + " OK, " + failed + " FAIL\n";
+  results.forEach(function(r){
+    msg += (r.ok ? "  ✓ " : "  ✗ ") + r.name + (r.info ? " — " + r.info : "") + "\n";
+  });
+  Logger.log(msg);
+
+  try {
+    getSS().toast(passed + " OK, " + failed + " FAIL", "Self-test", 8);
+  } catch(e) {}
+
+  return { ok: failed === 0, passed: passed, failed: failed, results: results };
+}
