@@ -248,12 +248,17 @@ function HistorialAdminScreen({ ctx }) {
               onClick={() => setAseadora(aseadora === c ? null : c)}>{c}</button>
           ))}
         </div>
-        <div className="chips" style={{ marginTop: 6 }}>
-          <button className={'chip' + (!propId ? ' active' : '')} onClick={() => setPropId(null)}>Todas las props</button>
-          {propsList.slice(0, 12).map(p => (
-            <button key={p.id} className={'chip' + (propId === p.id ? ' active' : '')}
-              onClick={() => setPropId(propId === p.id ? null : p.id)}>{p.nombre.slice(0, 18)}</button>
-          ))}
+        <div style={{ marginTop: 8 }}>
+          <div className="select">
+            <select value={propId || ''} onChange={e => setPropId(e.target.value || null)}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--bg-surface)', fontFamily: 'inherit', fontSize: 14, appearance: 'none' }}>
+              <option value="">Todas las propiedades</option>
+              {[...propsList].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+            <Icon name="chevron-down" size={18} className="chev" />
+          </div>
         </div>
         {filtroActivo && (
           <button className="clear-btn" style={{ marginTop: 6 }} onClick={() => { setAseadora(null); setPropId(null); }}>Limpiar filtros</button>
