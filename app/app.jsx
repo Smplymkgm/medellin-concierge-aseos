@@ -3,7 +3,34 @@
    ============================================================ */
 const { useState: useStateL, useEffect: useEffectL } = React;
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec';
+// GAS_URL puede venir de un <meta name="gas-url" content="..."> inyectado por
+// el workflow deploy-pages, o cae al hardcoded para dev local.
+const GAS_URL = (function() {
+  var m = document.querySelector('meta[name="gas-url"]');
+  if (m && m.content && m.content !== '__GAS_URL__') return m.content;
+  return 'https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec';
+})();
+
+/* ============================================================
+   ErrorBoundary — atrapa errores de render para evitar pantalla blanca
+   ============================================================ */
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error: error }; }
+  componentDidCatch(error, info) {
+    try { console.error('ErrorBoundary', error, info); } catch(e) {}
+  }
+  render() {
+    if (this.state.error) {
+      return React.createElement('div', { style: { padding: 24, fontFamily: 'Inter, system-ui, sans-serif', textAlign: 'center' } },
+        React.createElement('div', { style: { fontSize: 18, fontWeight: 600, marginBottom: 8 } }, 'Algo salió mal'),
+        React.createElement('div', { style: { fontSize: 13, color: '#888', marginBottom: 16, wordBreak: 'break-word' } }, String(this.state.error && this.state.error.message || this.state.error)),
+        React.createElement('button', { className: 'btn btn-primary', onClick: () => location.reload() }, 'Recargar')
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function gasPost(body) {
   return fetch(GAS_URL, {
@@ -201,8 +228,10 @@ function App() {
   // admin filters
   const [filter, setFilter] = useStateL({ estado: 'all', aseadora: null });
 
-  // toast
-  const [toast, setToast] = useStateL(null);
+  // toast + sync indicator
+  const [toast, setToast]       = useStateL(null);
+  const [syncing, setSyncing]   = useStateL(false);
+  const [lastSync, setLastSync] = useStateL(null);
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2200); }
 
   // Fetch personal list on mount for login dropdown
@@ -224,6 +253,7 @@ function App() {
   }, []);
 
   function loadDataFor(nombre, rol) {
+    setSyncing(true);
     return gasPost({ action: 'getDatos', nombre: nombre, rol: rol })
       .then(function(res) {
         if (res.ok && res.data) {
@@ -233,9 +263,11 @@ function App() {
           setAseos(realAseos);
           setLiveProps(realProps); setProps(realProps);
           setLivePersonal(realPersonal); setPersonal(realPersonal);
+          setLastSync(new Date());
         }
       })
-      .catch(function() {});
+      .catch(function() {})
+      .finally(function() { setSyncing(false); });
   }
 
   function login(userInfo) {
@@ -427,9 +459,11 @@ function App() {
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
     filter, setFilter,
     openSync: () => {
-      showToast('Actualizando…');
+      if (syncing) return;
       loadDataFor(session.nombre, session.rol).then(() => showToast('Datos actualizados'));
     },
+    syncing,
+    lastSync,
   };
 
   // urgent count for nav badge
@@ -494,4 +528,6 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <ErrorBoundary><App /></ErrorBoundary>
+);

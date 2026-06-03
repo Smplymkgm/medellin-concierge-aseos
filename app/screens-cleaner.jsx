@@ -31,7 +31,7 @@ function HoyScreen({ ctx }) {
   return (
     <div className="scrollarea">
       <AppBar title={'Hola, ' + ctx.user} subtitle={fmtDate(TODAY)} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <div className="aseo-list">
         <div className="day-head">
           <span className="label sec">Hoy</span>
@@ -93,7 +93,7 @@ function TodosScreen({ ctx }) {
   return (
     <div className="scrollarea">
       <AppBar title="Todos" subtitle={mine.length + ' en total · ' + totalActivos + ' activos · ' + totalDone + ' completados'} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <div className="aseo-list">
         {groups.length === 0 && (
           <div className="empty"><Icon name="list" size={28} /><div className="body">No tienes aseos asignados</div></div>
@@ -123,7 +123,7 @@ function CalendarioScreen({ ctx, role }) {
   return (
     <div className="scrollarea">
       <AppBar title="Calendario" onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <MonthCalendar aseos={list} selected={ctx.calSel} onSelect={ctx.setCalSel}
         month={ctx.calMonth} year={ctx.calYear} onMonth={ctx.shiftMonth} />
       <div className="cal-daylist">
@@ -224,7 +224,7 @@ function HistorialScreen({ ctx }) {
   return (
     <div className="scrollarea">
       <AppBar title="Historial" onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} aria-label="Actualizar"><Icon name="sync" size={20} /></button>} />
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <MonthRangePicker value={period} onChange={setPeriod} />
       <div style={{ padding: '12px 20px 0' }}>
         <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 12, padding: 16 }}>

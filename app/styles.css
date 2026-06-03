@@ -627,6 +627,9 @@ html, body {
   white-space: nowrap;
 }
 @keyframes toastin { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes spin360 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { animation: spin360 1s linear infinite; transform-origin: center; }
+.icon-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 @keyframes shake {
   0%,100% { transform: translateX(0); }
   20% { transform: translateX(-6px); } 40% { transform: translateX(6px); }
