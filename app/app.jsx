@@ -12,6 +12,24 @@ function gasPost(body) {
   }).then(r => r.json());
 }
 
+/* ---- Session persistence ---- */
+const SESSION_KEY = 'medcon_session_v1';
+function loadSession() {
+  try {
+    var raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    if (!s || !s.nombre || !s.rol) return null;
+    return s;
+  } catch (e) { return null; }
+}
+function saveSession(s) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
+
 /* Parse "dd/MM/yyyy" → Date */
 function parseDateStr(s) {
   if (!s) return new Date();
@@ -151,7 +169,7 @@ function Login({ personalList, onLogin }) {
    Root App
    ============================================================ */
 function App() {
-  const [session, setSession]   = useStateL(null);
+  const [session, setSession]   = useStateL(loadSession);
   const [aseos, setAseos]       = useStateL(() => ASEOS.map(a => ({ ...a })));
   const [props, setProps]       = useStateL(getProps);
   const [personal, setPersonal] = useStateL(getPersonal);
@@ -203,15 +221,8 @@ function App() {
       });
   }, []);
 
-  function login(userInfo) {
-    const nombre = userInfo.nombre;
-    const rol    = userInfo.rol;
-    setSession(userInfo);
-    setTab(rol === 'admin' ? 'aseos' : 'hoy');
-    setOpenId(null); setPropId(null);
-
-    // Fetch real data from API
-    gasPost({ action: 'getDatos', nombre, rol })
+  function loadDataFor(nombre, rol) {
+    return gasPost({ action: 'getDatos', nombre: nombre, rol: rol })
       .then(function(res) {
         if (res.ok && res.data) {
           const realAseos    = transformAseos(res.data.aseos);
@@ -224,7 +235,26 @@ function App() {
       })
       .catch(function() {});
   }
-  function logout() { setSession(null); }
+
+  function login(userInfo) {
+    const nombre = userInfo.nombre;
+    const rol    = userInfo.rol;
+    saveSession(userInfo);
+    setSession(userInfo);
+    setTab(rol === 'admin' ? 'aseos' : 'hoy');
+    setOpenId(null); setPropId(null);
+    loadDataFor(nombre, rol);
+  }
+  function logout() { clearSession(); setSession(null); }
+
+  // Rehydrate: if a session was restored from localStorage on mount, fetch fresh data
+  useEffectL(function() {
+    if (session && session.nombre && session.rol) {
+      loadDataFor(session.nombre, session.rol);
+      setTab(session.rol === 'admin' ? 'aseos' : 'hoy');
+    }
+  // eslint-disable-next-line
+  }, []);
 
   function toggle(id) { setOpenId(o => o === id ? null : id); }
   function shiftMonth(dir) {
@@ -310,8 +340,8 @@ function App() {
     showToast('Aseo agregado · ' + prop.nombre);
   }
 
-  // Loading screen while fetching personal list
-  if (loadingPersonal) {
+  // Loading screen while fetching personal list (skip if session already restored)
+  if (loadingPersonal && !session) {
     return (
       <div className="stage">
         <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
