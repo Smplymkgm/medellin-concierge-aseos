@@ -329,6 +329,30 @@ function App() {
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
   }
+  function doFinalizarSinForm(a) {
+    if (!a.asignada) { showToast('Asigna una aseadora primero'); return; }
+    if (!confirm('Marcar "' + (propById(a.prop)?.nombre || a.codigo) + '" como Finalizado sin llenar el form?\n\nÚsalo para aseos viejos o cuando la aseadora no llenó el form.')) return;
+
+    const prev = aseos;
+    setAseos(list => list.map(x => x.codigo === a.codigo
+      ? { ...x, status: 'done', completadoEl: a.checkout, tipo: 'Sin form' }
+      : x));
+    showToast('Marcando finalizado…');
+
+    gasPost({ action: 'completarAseo', codigo: a.codigo, nombre: a.asignada })
+      .then(res => {
+        if (res && res.ok) showToast('Marcado finalizado');
+        else {
+          setAseos(prev);
+          showToast('Error: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(() => {
+        setAseos(prev);
+        showToast('Error de conexión');
+      });
+  }
+
   function openReassign(a) { setReassign(a); setReassignOpen(true); }
   function doAssign(a, who) {
     setAseos(list => list.map(x => x.codigo === a.codigo
@@ -456,6 +480,7 @@ function App() {
     user: session.nombre, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
     openEditProp, openAddProp, openAddCleaner, openEditCleaner,
+    doFinalizarSinForm,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
     filter, setFilter,
     openSync: () => {

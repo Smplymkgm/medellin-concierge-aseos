@@ -24,16 +24,31 @@ function groupByDay(list) {
 
 function HoyScreen({ ctx }) {
   const mine = ctx.aseos.filter(a => a.asignada === ctx.user && a.status !== 'done');
-  const hoy = mine.filter(a => sameDay(a.checkout, TODAY));
+  const hoy      = mine.filter(a => sameDay(a.checkout, TODAY));
+  const atrasados = mine.filter(a => a.checkout < TODAY && !sameDay(a.checkout, TODAY));
   const proximos = mine.filter(a => a.checkout > TODAY);
   const sortedHoy = sortAseos(hoy);
+  const sortedAtrasados = sortAseos(atrasados);
 
   return (
     <div className="scrollarea">
       <AppBar title={'Hola, ' + ctx.user} subtitle={fmtDate(TODAY)} onLogout={ctx.logout}
         actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
       <div className="aseo-list">
-        <div className="day-head">
+        {sortedAtrasados.length > 0 && (
+          <>
+            <div className="day-head">
+              <span className="label sec" style={{ color: 'var(--accent)' }}>Atrasados</span>
+              <span className="caption count">{sortedAtrasados.length}</span>
+            </div>
+            {sortedAtrasados.map(a => (
+              <AseoCard key={a.codigo} aseo={a} role="aseadora"
+                open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
+                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+            ))}
+          </>
+        )}
+        <div className="day-head" style={sortedAtrasados.length > 0 ? { marginTop: 24 } : null}>
           <span className="label sec">Hoy</span>
           <span className="caption count">{sortedHoy.length} {sortedHoy.length === 1 ? 'aseo' : 'aseos'}</span>
         </div>
@@ -239,8 +254,18 @@ function HistorialScreen({ ctx }) {
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos en este período</div></div>
         )}
         {inPeriod.map(a => (
-          <AseoCard key={a.codigo} aseo={a} role="aseadora"
-            open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)} />
+          <div key={a.codigo}>
+            <AseoCard aseo={a} role="aseadora"
+              open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)} />
+            {ctx.openId === a.codigo && !a.entrada && (
+              <div style={{ padding: '0 16px 12px' }}>
+                <button className="btn btn-secondary btn-block"
+                  onClick={() => ctx.openCompletar(a)}>
+                  Llenar form retroactivo
+                </button>
+              </div>
+            )}
+          </div>
         ))}
         <div style={{ height: 80 }}></div>
       </div>
