@@ -121,10 +121,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
             {a.status !== 'done' && (
               <div className="aseo-actions" style={{ flexWrap: 'wrap' }}>
                 {role === 'aseadora'
-                  ? <>
-                      <button className="btn btn-primary" onClick={() => onComplete(a)}>Completar</button>
-                      <button className="btn btn-secondary" onClick={() => onReassign && onReassign(a)}>Reasignar</button>
-                    </>
+                  ? <button className="btn btn-primary btn-block" onClick={() => onComplete(a)}>Completar</button>
                   : <>
                       <button className="btn btn-primary" onClick={() => onReassign && onReassign(a)}>
                         {a.asignada ? 'Reasignar' : 'Asignar'}
