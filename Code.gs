@@ -270,16 +270,86 @@ function handleGetAseos(body) {
 //  14 Entrada | 15 Salida | 16 Revision (json) | 17 Reposicion (json)
 //  18 Funcionamiento (json) | 19 Reporte | 20 Video
 
+// Schema explícito de columnas del formulario en hoja "Todos los Aseos":
+// orden importa. Cada ítem del form = una columna propia.
+var FORM_COLUMNS = (function() {
+  var cols = [];
+  // Tiempos
+  cols.push({ key: "entrada",        label: "Entrada",        width: 70 });
+  cols.push({ key: "salida",         label: "Salida",         width: 70 });
+  // Revisión (6 áreas)
+  cols.push({ key: "rev_habitaciones", label: "Aseo: Habitaciones", width: 110, group: "revision",     id: "habitaciones" });
+  cols.push({ key: "rev_cocina",       label: "Aseo: Cocina",       width: 100, group: "revision",     id: "cocina" });
+  cols.push({ key: "rev_sala",         label: "Aseo: Sala",         width: 100, group: "revision",     id: "sala" });
+  cols.push({ key: "rev_banos",        label: "Aseo: Baños",        width: 100, group: "revision",     id: "banos" });
+  cols.push({ key: "rev_balcon",       label: "Aseo: Balcón",       width: 100, group: "revision",     id: "balcon" });
+  cols.push({ key: "rev_util",         label: "Aseo: Cuarto útil",  width: 110, group: "revision",     id: "util" });
+  // Reposición (5)
+  cols.push({ key: "rep_jabon",        label: "Repos: Jabón",       width: 100, group: "reposicion",   id: "jabon" });
+  cols.push({ key: "rep_papelBano",    label: "Repos: Papel baño",  width: 110, group: "reposicion",   id: "papelBano" });
+  cols.push({ key: "rep_papelCocina",  label: "Repos: Papel cocina",width: 120, group: "reposicion",   id: "papelCocina" });
+  cols.push({ key: "rep_panitos",      label: "Repos: Pañitos",     width: 100, group: "reposicion",   id: "panitos" });
+  cols.push({ key: "rep_bolsas",       label: "Repos: Bolsas",      width: 100, group: "reposicion",   id: "bolsas" });
+  // Funcionamiento (9)
+  cols.push({ key: "fun_interruptores",label: "Func: Interruptores",width: 130, group: "funcionamiento", id: "interruptores" });
+  cols.push({ key: "fun_puertas",      label: "Func: Puertas",      width: 110, group: "funcionamiento", id: "puertas" });
+  cols.push({ key: "fun_aires",        label: "Func: Aires",        width: 110, group: "funcionamiento", id: "aires" });
+  cols.push({ key: "fun_ventanas",     label: "Func: Ventanas",     width: 110, group: "funcionamiento", id: "ventanas" });
+  cols.push({ key: "fun_mesas",        label: "Func: Mesas",        width: 110, group: "funcionamiento", id: "mesas" });
+  cols.push({ key: "fun_sofas",        label: "Func: Sofás",        width: 110, group: "funcionamiento", id: "sofas" });
+  cols.push({ key: "fun_camas",        label: "Func: Camas",        width: 110, group: "funcionamiento", id: "camas" });
+  cols.push({ key: "fun_tvs",          label: "Func: TVs",          width: 100, group: "funcionamiento", id: "tvs" });
+  cols.push({ key: "fun_lavadora",     label: "Func: Lavadora",     width: 110, group: "funcionamiento", id: "lavadora" });
+  // Texto libre y video
+  cols.push({ key: "reporte",          label: "Reporte",            width: 240 });
+  cols.push({ key: "video",            label: "Video",              width: 260 });
+  return cols;
+})();
+var FORM_FIRST_COL = 14;
+var FORM_LAST_COL  = FORM_FIRST_COL + FORM_COLUMNS.length - 1;
+
 function ensureAseosFormColumns(hoja) {
   var lastCol = hoja.getLastColumn();
-  if (lastCol >= 20) return;
-  var headers = ["Entrada","Salida","Revisión","Reposición","Funcionamiento","Reporte","Video"];
-  hoja.getRange(1, lastCol + 1, 1, headers.length - (lastCol - 13))
-    .setValues([headers.slice(lastCol - 13)])
-    .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
-  // Anchos cómodos para texto multi-línea
-  var widths = [70, 70, 200, 200, 220, 240, 260];
-  for (var i = 0; i < widths.length; i++) hoja.setColumnWidth(14 + i, widths[i]);
+  // Si ya tiene las columnas y el primer header coincide, asumir OK
+  var existingHeaders = lastCol >= FORM_FIRST_COL
+    ? hoja.getRange(1, FORM_FIRST_COL, 1, Math.min(lastCol - FORM_FIRST_COL + 1, FORM_COLUMNS.length)).getValues()[0]
+    : [];
+  var alreadyOk = existingHeaders[0] === FORM_COLUMNS[0].label && lastCol >= FORM_LAST_COL;
+  if (alreadyOk) return;
+
+  // Escribir todos los headers de FORM_COLUMNS desde col 14
+  var labels = FORM_COLUMNS.map(function(c){ return c.label; });
+  hoja.getRange(1, FORM_FIRST_COL, 1, labels.length).setValues([labels])
+    .setBackground("#1a1a2e").setFontColor("#ffffff")
+    .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
+  for (var i = 0; i < FORM_COLUMNS.length; i++) {
+    hoja.setColumnWidth(FORM_FIRST_COL + i, FORM_COLUMNS[i].width);
+  }
+}
+
+// Convierte 'ok'/'review'/'na'/bool en el ícono que va a la celda
+function valToIcon(v) {
+  if (v === undefined || v === null || v === "") return "";
+  if (v === "ok" || v === true)  return "✓";
+  if (v === "review" || v === false) return "⚠";
+  if (v === "na") return "—";
+  return String(v);
+}
+
+function buildFormRow(body) {
+  var rev = body.revision || {};
+  var rep = body.reposicion || {};
+  var fun = body.funcionamiento || {};
+  return FORM_COLUMNS.map(function(c) {
+    if (c.key === "entrada")  return String(body.entrada || "").trim();
+    if (c.key === "salida")   return String(body.salida  || "").trim();
+    if (c.key === "reporte")  return String(body.reporte || "").trim();
+    if (c.key === "video")    return String(body.videoLink || body.video || "").trim();
+    if (c.group === "revision")       return valToIcon(rev[c.id]);
+    if (c.group === "reposicion")     return valToIcon(rep[c.id]);
+    if (c.group === "funcionamiento") return valToIcon(fun[c.id]);
+    return "";
+  });
 }
 
 // Labels para renderizar legible en el spreadsheet (espejo de data.jsx)
@@ -380,18 +450,16 @@ function handleCompletarAseo(body) {
       hoja.getRange(fila, 13).setValue(ahora);
       if (notas) hoja.getRange(fila, 10).setValue(notas);
 
-      // Batch write para columnas del form (14-20) en un solo setValues
-      var formRange = hoja.getRange(fila, 14, 1, 7);
-      formRange.setValues([[entrada, salida, revision, reposicion, funcionamiento, reporte, videoLink]])
-        .setWrap(true)
-        .setVerticalAlignment("top");
+      // Batch write a TODAS las columnas del form (una celda por ítem)
+      var rowValues = buildFormRow(body);
+      hoja.getRange(fila, FORM_FIRST_COL, 1, rowValues.length).setValues([rowValues])
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      // Excepción: reporte y video alineados a la izquierda
+      var reporteCol = FORM_FIRST_COL + FORM_COLUMNS.length - 2;
+      hoja.getRange(fila, reporteCol, 1, 2).setHorizontalAlignment("left").setWrap(true);
 
-      // Guardar JSON crudo en notas para acceso programático futuro
-      if (revisionJson)       hoja.getRange(fila, 16).setNote(revisionJson);
-      if (reposicionJson)     hoja.getRange(fila, 17).setNote(reposicionJson);
-      if (funcionamientoJson) hoja.getRange(fila, 18).setNote(funcionamientoJson);
-
-      hoja.getRange(fila, 1, 1, 20).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+      hoja.getRange(fila, 1, 1, FORM_LAST_COL).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
 
       // Sync al master
       var master = ss.getSheetByName(CONFIG.hojaMaestra);
@@ -1138,6 +1206,8 @@ function onOpen() {
     .addSeparator()
     .addItem("Ordenar hoja Aseos por fecha",        "ordenarHojaAseosPorFecha")
     .addItem("Activar/refrescar filtro por mes",    "crearFiltroAseos")
+    .addSeparator()
+    .addItem("Migrar form viejo (JSON → columnas)", "migrarFormJsonAColumnas")
     .addToUi();
 }
 
@@ -1438,6 +1508,110 @@ function fixSheetNames() {
 }
 
 function getSpreadsheetId() { Logger.log(getSS().getId()); }
+
+// ============================================================
+// MIGRACIÓN: convertir filas con JSON o multi-línea (cols 16/17/18
+// del esquema viejo) al esquema nuevo de 1 columna por ítem.
+// One-shot, idempotente: si una fila ya tiene la nueva forma, la salta.
+// ============================================================
+
+function migrarFormJsonAColumnas() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) {
+    ss.toast("Hoja Aseos vacía", "Migración", 4);
+    return;
+  }
+
+  ensureAseosFormColumns(hoja);
+
+  var lastRow = hoja.getLastRow();
+  // Tomar las viejas cols 16/17/18 (revision/reposicion/funcionamiento)
+  // + 19 (reporte) + 20 (video). Si la fila no tiene esos datos, skip.
+  var bloqueViejo = hoja.getRange(2, 14, lastRow - 1, 7).getValues();
+  var notasRevision      = hoja.getRange(2, 16, lastRow - 1, 1).getNotes();
+  var notasReposicion    = hoja.getRange(2, 17, lastRow - 1, 1).getNotes();
+  var notasFuncionamiento= hoja.getRange(2, 18, lastRow - 1, 1).getNotes();
+
+  var migradas = 0;
+  var omitidas = 0;
+
+  for (var i = 0; i < bloqueViejo.length; i++) {
+    var fila = i + 2;
+    var oldEntrada = bloqueViejo[i][0];
+    var oldSalida  = bloqueViejo[i][1];
+    var oldRev     = bloqueViejo[i][2];
+    var oldRep     = bloqueViejo[i][3];
+    var oldFun     = bloqueViejo[i][4];
+    var oldReporte = bloqueViejo[i][5];
+    var oldVideo   = bloqueViejo[i][6];
+
+    // Si está vacío, nada que migrar
+    if (!oldEntrada && !oldSalida && !oldRev && !oldRep && !oldFun) {
+      omitidas++;
+      continue;
+    }
+
+    // Si la fila ya tiene contenido en una col >20 (esquema nuevo), skip
+    var test = hoja.getRange(fila, 22, 1, 1).getValue();
+    if (test) { omitidas++; continue; }
+
+    function parsear(raw, note) {
+      // Preferir el JSON guardado en la nota
+      if (note) { try { return JSON.parse(note); } catch(e) {} }
+      // Si el valor de la celda parece JSON
+      if (typeof raw === "string" && raw.trim().indexOf("{") === 0) {
+        try { return JSON.parse(raw); } catch(e) {}
+      }
+      // Si es multi-línea con íconos, intentar reconstruir
+      if (typeof raw === "string" && raw.indexOf("\n") >= 0) {
+        var out = {};
+        raw.split("\n").forEach(function(line) {
+          var m = line.match(/^([✓⚠—•])\s+(.+)$/);
+          if (!m) return;
+          var status = m[1] === "✓" ? "ok" : m[1] === "⚠" ? "review" : m[1] === "—" ? "na" : "";
+          // mapear el label a un id conocido — match laxo
+          var labelMatch = m[2].toLowerCase();
+          var maps = [LABELS_REVISION, LABELS_REPOSICION, LABELS_FUNCIONA];
+          for (var mi = 0; mi < maps.length; mi++) {
+            for (var k in maps[mi]) {
+              if (maps[mi][k].toLowerCase() === labelMatch) { out[k] = status; }
+            }
+          }
+        });
+        return out;
+      }
+      return null;
+    }
+
+    var revObj = parsear(oldRev, notasRevision[i][0]);
+    var repObj = parsear(oldRep, notasReposicion[i][0]);
+    var funObj = parsear(oldFun, notasFuncionamiento[i][0]);
+
+    // Construir body sintético para reusar buildFormRow
+    var bodySint = {
+      entrada: oldEntrada,
+      salida:  oldSalida,
+      revision: revObj,
+      reposicion: repObj,
+      funcionamiento: funObj,
+      reporte: oldReporte,
+      videoLink: oldVideo,
+    };
+    var rowValues = buildFormRow(bodySint);
+
+    hoja.getRange(fila, FORM_FIRST_COL, 1, rowValues.length).setValues([rowValues])
+      .setHorizontalAlignment("center")
+      .setVerticalAlignment("middle");
+    var reporteCol = FORM_FIRST_COL + FORM_COLUMNS.length - 2;
+    hoja.getRange(fila, reporteCol, 1, 2).setHorizontalAlignment("left").setWrap(true);
+
+    migradas++;
+  }
+
+  ss.toast(migradas + " migradas · " + omitidas + " sin cambios", "Migración", 6);
+  Logger.log("Migración form: " + migradas + " filas migradas, " + omitidas + " omitidas");
+}
 
 // ============================================================
 // LISTAR VIDEOS REGISTRADOS (debug rápido)
