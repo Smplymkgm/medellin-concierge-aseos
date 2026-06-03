@@ -7,7 +7,7 @@ Para alguien (humano o Claude) que tome este proyecto sin contexto previo.
 Web app para gestionar aseos de propiedades Airbnb en Medellín. Mobile-first. Dos roles: **admin** (gestiona) y **aseadora** (ejecuta).
 
 - Live: https://smplymkgm.github.io/medellin-concierge-aseos/
-- Repo: https://github.com/smplymkgm/Barber (sí, el repo se llama "Barber" por razones históricas — el proyecto "Barber" se abandonó y este reusa el repo)
+- Repo: https://github.com/smplymkgm/medellin-concierge-aseos
 - Spreadsheet: ID `1iKbcU8lcr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q`
 - Apps Script: editor en script.google.com (acceso solo con la cuenta del owner)
 
