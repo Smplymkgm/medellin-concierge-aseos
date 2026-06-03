@@ -1,0 +1,74 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Apps Script syntax
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const files = [];
+            // Buscar .gs en raíz y en apps-script/
+            for (const root of ['.', 'apps-script']) {
+              if (!fs.existsSync(root)) continue;
+              for (const f of fs.readdirSync(root)) {
+                if (f.endsWith('.gs')) files.push(path.join(root, f));
+              }
+            }
+            if (files.length === 0) { console.error('No .gs files found'); process.exit(1); }
+            let failed = false;
+            for (const f of files) {
+              try {
+                new Function(fs.readFileSync(f, 'utf8'));
+                console.log('OK:    ' + f);
+              } catch (e) {
+                console.error('FAIL:  ' + f + ' :: ' + e.message);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          "
+
+      - name: Validate JSON manifests
+        run: |
+          for f in appsscript.json apps-script/appsscript.json; do
+            if [ -f "$f" ]; then
+              node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" && echo "OK:    $f"
+            fi
+          done
+
+      - name: Validate JSX parses
+        run: |
+          npm install --no-save --silent @babel/core@7 @babel/preset-react@7 @babel/preset-env@7 2>&1 | tail -3
+          node -e "
+            const fs = require('fs');
+            const babel = require('@babel/core');
+            const files = fs.readdirSync('app').filter(f => f.endsWith('.jsx')).map(f => 'app/' + f);
+            let failed = false;
+            for (const f of files) {
+              try {
+                babel.transformSync(fs.readFileSync(f, 'utf8'), {
+                  presets: ['@babel/preset-react', '@babel/preset-env'],
+                  filename: f,
+                });
+                console.log('OK:    ' + f);
+              } catch (e) {
+                console.error('FAIL:  ' + f + ' :: ' + e.message.split('\\n')[0]);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          "

@@ -1,0 +1,8 @@
+# Default owner for all paths
+* @smplymkgm
+
+# Backend critical paths require explicit review
+/Code.gs            @smplymkgm
+/Sync.gs            @smplymkgm
+/appsscript.json    @smplymkgm
+/.github/workflows/ @smplymkgm

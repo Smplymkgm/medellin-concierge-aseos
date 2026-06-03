@@ -1,0 +1,41 @@
+name: Deploy GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Index.html'
+      - 'app/**'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage site with auto cache buster
+        run: |
+          mkdir -p _site
+          cp Index.html _site/
+          cp -r app _site/
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          # Reemplaza cualquier ?v=... en script src de .jsx por el SHA del commit
+          sed -i "s/\\.jsx?v=[^\"]*\"/\\.jsx?v=$SHORT_SHA\"/g" _site/Index.html
+          # Imprime el resultado para debug
+          grep -o "\\.jsx?v=[^\"]*\"" _site/Index.html | sort -u
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          keep_files: false
+          enable_jekyll: false
+          commit_message: "deploy: ${{ github.sha }}"

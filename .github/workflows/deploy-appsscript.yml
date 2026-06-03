@@ -1,0 +1,76 @@
+name: Deploy Apps Script
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Code.gs'
+      - 'Sync.gs'
+      - 'appsscript.json'
+      - '.clasp.json'
+      - 'apps-script/**'
+  workflow_dispatch:
+
+concurrency:
+  group: appsscript-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp@2.4.2
+
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$CLASP_JSON" ]; then
+            echo "::error::Missing CLASPRC_JSON or CLASP_JSON secret. See docs/IMPLEMENTATION_ORDER.md Paso 2."
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '%s' "$CLASP_JSON" > .clasp.json
+
+      - name: Push to Apps Script
+        run: clasp push --force
+
+      - name: Deploy new version
+        env:
+          DEPLOYMENT_ID: ${{ secrets.APPSCRIPT_DEPLOYMENT_ID }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          if [ -n "$DEPLOYMENT_ID" ]; then
+            clasp deploy --description "ci: $SHORT_SHA" --deploymentId "$DEPLOYMENT_ID"
+          else
+            echo "::warning::APPSCRIPT_DEPLOYMENT_ID secret not set. Creating a NEW deployment — this will change the Web App URL. Set the secret to pin the deployment."
+            clasp deploy --description "ci: $SHORT_SHA"
+          fi
+
+      - name: Verify deployment health
+        env:
+          GAS_URL: ${{ secrets.GAS_URL }}
+        run: |
+          if [ -z "$GAS_URL" ]; then
+            echo "GAS_URL secret not set, skipping health check"
+            exit 0
+          fi
+          for i in 1 2 3 4 5; do
+            sleep 5
+            response=$(curl -sL -X POST "$GAS_URL" \
+              -H "Content-Type: application/json" \
+              -d '{"action":"debug"}' || echo "")
+            if echo "$response" | grep -q '"ok":true'; then
+              echo "Health check OK on attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+          done
+          echo "::warning::Health check did not pass after 5 attempts. Manual verification recommended."
