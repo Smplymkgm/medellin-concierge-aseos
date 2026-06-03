@@ -815,7 +815,11 @@ function handleGetUploadUrl(body) {
   try {
     var token = ScriptApp.getOAuthToken();
     var fecha = hoyStr().replace(/\//g, "-");
-    var nombreArchivo = fecha + "_" + codigo + "_" + filename;
+    // Limpiar filenames del iPhone que vienen como UUID raro
+    // (1aa22088-e4fd-...mov) — los reemplazamos con un nombre legible.
+    var ext = (filename.match(/\.([a-zA-Z0-9]+)$/) || [, "mp4"])[1];
+    var safeAseadora = String(body.aseadora || "").replace(/[^A-Za-z0-9]/g, "");
+    var nombreArchivo = fecha + "_" + codigo + (safeAseadora ? "_" + safeAseadora : "") + "_video." + ext;
     var metadata = { name: nombreArchivo, parents: [folderId] };
 
     var response = UrlFetchApp.fetch(
@@ -853,14 +857,35 @@ function handleRegistrarVideo(body) {
   var aseadora  = String(body.aseadora  || "").trim();
   var checkout  = String(body.checkout  || "").trim();
   var fileId    = String(body.fileId    || "").trim();
+  var filename  = String(body.filename  || "").trim();
   var notas     = String(body.notas     || "").trim();
+
+  // Si el frontend no obtuvo fileId (caso Safari + CORS), buscamos el
+  // archivo por filename dentro de la carpeta de la propiedad. Esto
+  // recupera el link cuando el response del upload fue bloqueado.
+  if (!fileId && filename && propiedad) {
+    try {
+      var props = getPropiedades();
+      var folderId = "";
+      for (var i = 0; i < props.length; i++) {
+        if (props[i].nombre === propiedad || props[i].id === propiedad) {
+          folderId = props[i].folderId; break;
+        }
+      }
+      if (folderId) {
+        var folder = DriveApp.getFolderById(folderId);
+        var files = folder.getFilesByName(filename);
+        if (files.hasNext()) fileId = files.next().getId();
+      }
+    } catch(e) { Logger.log("findByName: " + e.message); }
+  }
 
   var videoLink = fileId
     ? "https://drive.google.com/file/d/" + fileId + "/view"
-    : String(body.videoLink || "").trim();
+    : (String(body.videoLink || "").trim() || filename);
 
   registrarVideoEnHoja({ codigo: codigo, propiedad: propiedad, aseadora: aseadora, checkout: checkout, videoLink: videoLink, notas: notas });
-  return respond(true, null);
+  return respond(true, { fileId: fileId, link: videoLink });
 }
 
 function registrarVideoEnHoja(data) {

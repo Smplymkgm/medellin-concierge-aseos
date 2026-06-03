@@ -43,6 +43,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
       action: 'getUploadUrl',
       codigo: a.codigo,
       propiedad: a.propNombre,
+      aseadora: a.asignada || '',
       filename: f.name,
     }).then(res => {
       if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo iniciar upload');
@@ -67,17 +68,24 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
         setFile({ name: finalName, size: f.size, fileId: fileId, link: link, mime: f.type });
         setProgress(100);
         setUploading(false);
-        if (fileId) {
-          gasPost({
-            action: 'registrarVideo',
-            codigo: a.codigo,
-            propiedad: a.propNombre,
-            aseadora: a.asignada || '',
-            checkout: '',
-            fileId: fileId,
-            notas: '',
-          }).catch(() => {});
-        }
+        // Siempre registrar — si fileId está vacío, el backend lo busca
+        // por filename en la carpeta de la propiedad. Esto repara el caso
+        // Safari + CORS.
+        gasPost({
+          action: 'registrarVideo',
+          codigo: a.codigo,
+          propiedad: a.propNombre,
+          aseadora: a.asignada || '',
+          checkout: '',
+          fileId: fileId,
+          filename: finalName,
+          notas: '',
+        }).then(reg => {
+          if (reg && reg.ok && reg.data && reg.data.link && !file?.link) {
+            // backend resolvió el link a posteriori
+            setFile(curr => curr ? { ...curr, fileId: reg.data.fileId || curr.fileId, link: reg.data.link } : curr);
+          }
+        }).catch(() => {});
       }
 
       xhr.onload = () => {
