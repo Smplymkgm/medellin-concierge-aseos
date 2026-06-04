@@ -261,7 +261,25 @@ function PropiedadDetail({ ctx, propId }) {
             <Icon name="sync" size={16} /> Sincronizado vía iCal · {p.id}
           </div>
         </div>
-        <div style={{ height: 24 }}></div>
+
+        <div className="section">
+          <button
+            className="btn btn-block"
+            onClick={() => ctx.doDeleteProp(p.id)}
+            style={{
+              background: 'transparent',
+              color: 'var(--accent)',
+              border: '1px solid var(--accent)',
+              fontWeight: 600,
+            }}>
+            Eliminar propiedad
+          </button>
+          <div className="caption" style={{ marginTop: 6, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+            Permanente. Los aseos históricos no se borran.
+          </div>
+        </div>
+
+        <div style={{ height: 80 }}></div>
       </div>
     </div>
   );
