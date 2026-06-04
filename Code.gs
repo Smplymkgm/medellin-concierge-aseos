@@ -953,7 +953,7 @@ function getPropiedades() {
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var lastCol = Math.max(hoja.getLastColumn(), 8);
+  var lastCol = Math.max(hoja.getLastColumn(), 9);
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
   var props = [];
   for (var i = 0; i < datos.length; i++) {
@@ -962,6 +962,11 @@ function getPropiedades() {
     var nom = String(r[1]).trim();
     var url = String(r[4] || "").trim();
     if (!id || !nom) continue;
+    // Col I (índice 8) = Activa (boolean). Vacío/TRUE = activa.
+    // FALSE = archivada → no se devuelve.
+    var activaRaw = r[8];
+    var activa = !(activaRaw === false || activaRaw === "FALSE" || activaRaw === "false");
+    if (!activa) continue;
     var accesoStructRaw = String(r[7] || "").trim();
     var accesoStruct = null;
     if (accesoStructRaw && accesoStructRaw.charAt(0) === "{") {
@@ -1032,15 +1037,29 @@ function handleEliminarPropiedad(body) {
     var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
     if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja Propiedades no encontrada");
 
+    // Asegurar col I "Activa"
+    if (hoja.getLastColumn() < 9) {
+      hoja.getRange(1, 9).setValue("Activa")
+        .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
+      hoja.setColumnWidth(9, 70);
+      // Marcar todas las existentes como activas (TRUE) por default
+      if (hoja.getLastRow() > 1) {
+        var n = hoja.getLastRow() - 1;
+        var trueArr = [];
+        for (var k = 0; k < n; k++) trueArr.push([true]);
+        hoja.getRange(2, 9, n, 1).setValues(trueArr);
+      }
+      hoja.getRange("I2:I500").setDataValidation(
+        SpreadsheetApp.newDataValidation().requireCheckbox().build()
+      );
+    }
+
     var ids = hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues();
     for (var i = 0; i < ids.length; i++) {
       if (String(ids[i][0]).trim() === id) {
-        hoja.deleteRow(i + 2);
-        // No tocamos el folder de Drive (puede tener videos históricos);
-        // ni los aseos ya creados con ese idProp (se quedan en la hoja
-        // como historial). El sync futuro de iCal ya no los regenera
-        // porque la propiedad ya no existe.
-        return respond(true, { eliminado: id });
+        hoja.getRange(i + 2, 9).setValue(false);
+        hoja.getRange(i + 2, 1, 1, 9).setBackground("#fef0f0").setFontStyle("italic");
+        return respond(true, { archivado: id });
       }
     }
     return respond(false, null, "Propiedad no encontrada: " + id);
