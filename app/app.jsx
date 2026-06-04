@@ -382,6 +382,37 @@ function App() {
       });
   }
   function openEditProp(id) { setEditProp(props.find(p => p.id === id) || null); setEditPropOpen(true); }
+  function doDeleteProp(id) {
+    const target = props.find(p => p.id === id);
+    if (!target) return;
+    const linked = aseos.filter(a => a.prop === id).length;
+    const msg = 'Eliminar la propiedad "' + target.nombre + '" (' + id + ')?\n\n' +
+      (linked > 0
+        ? ('Hay ' + linked + ' aseo(s) ligados a esta propiedad. Quedarán como historial sin propiedad asociada (no se borran).\n\n')
+        : '') +
+      'La carpeta de Drive y los videos NO se borran. El iCal de Airbnb deja de sincronizarse.\n\n' +
+      'Esta acción no se puede deshacer.';
+    if (!confirm(msg)) return;
+
+    const prev = props;
+    const next = props.filter(p => p.id !== id);
+    setLiveProps(next); setProps(next);
+    setPropId(null); // cerrar el detalle
+    showToast('Eliminando…');
+
+    gasPost({ action: 'eliminarPropiedad', id: id })
+      .then(res => {
+        if (res && res.ok) showToast('Propiedad eliminada');
+        else {
+          setLiveProps(prev); setProps(prev);
+          showToast('Error: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(() => {
+        setLiveProps(prev); setProps(prev);
+        showToast('Error de conexión, no se eliminó');
+      });
+  }
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
   function doSaveProp(oldId, datos) {
     if (oldId == null) {
@@ -521,7 +552,7 @@ function App() {
     user: session.nombre, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
     openEditProp, openAddProp, openAddCleaner, openEditCleaner,
-    doFinalizarSinForm,
+    doFinalizarSinForm, doDeleteProp,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
     filter, setFilter,
     openSync: () => {

@@ -97,6 +97,7 @@ function doPost(e) {
     if (action === "getPropiedades")      return handleGetPropiedades(body);
     if (action === "agregarPropiedad")    return handleAgregarPropiedad(body);
     if (action === "actualizarPropiedad") return handleActualizarPropiedad(body);
+    if (action === "eliminarPropiedad")   return handleEliminarPropiedad(body);
     if (action === "getPersonal")         return handleGetPersonal(body);
     if (action === "actualizarPersonal")  return handleActualizarPersonal(body);
     if (action === "getUploadUrl")        return handleGetUploadUrl(body);
@@ -1018,6 +1019,34 @@ function handleAgregarPropiedad(body) {
     .setFontFamily("Arial").setFontSize(10);
 
   return respond(true, { id: nuevoId });
+}
+
+function handleEliminarPropiedad(body) {
+  var id = String(body.id || "").trim();
+  if (!id) return respond(false, null, "ID requerido");
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
+  try {
+    var ss = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
+    if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja Propiedades no encontrada");
+
+    var ids = hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() === id) {
+        hoja.deleteRow(i + 2);
+        // No tocamos el folder de Drive (puede tener videos históricos);
+        // ni los aseos ya creados con ese idProp (se quedan en la hoja
+        // como historial). El sync futuro de iCal ya no los regenera
+        // porque la propiedad ya no existe.
+        return respond(true, { eliminado: id });
+      }
+    }
+    return respond(false, null, "Propiedad no encontrada: " + id);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
 }
 
 function handleActualizarPropiedad(body) {
