@@ -272,10 +272,10 @@ function PropiedadDetail({ ctx, propId }) {
               border: '1px solid var(--accent)',
               fontWeight: 600,
             }}>
-            Eliminar propiedad
+            Archivar propiedad
           </button>
           <div className="caption" style={{ marginTop: 6, color: 'var(--text-tertiary)', textAlign: 'center' }}>
-            Permanente. Los aseos históricos no se borran.
+            Se oculta de la app. Datos preservados en el spreadsheet.
           </div>
         </div>
 

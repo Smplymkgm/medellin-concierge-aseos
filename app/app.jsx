@@ -386,23 +386,23 @@ function App() {
     const target = props.find(p => p.id === id);
     if (!target) return;
     const linked = aseos.filter(a => a.prop === id).length;
-    const msg = 'Eliminar la propiedad "' + target.nombre + '" (' + id + ')?\n\n' +
+    const msg = 'Archivar la propiedad "' + target.nombre + '" (' + id + ')?\n\n' +
+      'Se oculta de la app y deja de sincronizarse desde Airbnb. Todos los datos se conservan en el spreadsheet (col I "Activa" = FALSE).' +
       (linked > 0
-        ? ('Hay ' + linked + ' aseo(s) ligados a esta propiedad. Quedarán como historial sin propiedad asociada (no se borran).\n\n')
+        ? ('\n\n' + linked + ' aseo(s) ya creados se quedan como historial.')
         : '') +
-      'La carpeta de Drive y los videos NO se borran. El iCal de Airbnb deja de sincronizarse.\n\n' +
-      'Esta acción no se puede deshacer.';
+      '\n\nPara reactivarla después: marca la casilla Activa de esa fila en el spreadsheet.';
     if (!confirm(msg)) return;
 
     const prev = props;
     const next = props.filter(p => p.id !== id);
     setLiveProps(next); setProps(next);
     setPropId(null); // cerrar el detalle
-    showToast('Eliminando…');
+    showToast('Archivando…');
 
     gasPost({ action: 'eliminarPropiedad', id: id })
       .then(res => {
-        if (res && res.ok) showToast('Propiedad eliminada');
+        if (res && res.ok) showToast('Propiedad archivada');
         else {
           setLiveProps(prev); setProps(prev);
           showToast('Error: ' + ((res && res.error) || 'sin conexión'));
@@ -410,7 +410,7 @@ function App() {
       })
       .catch(() => {
         setLiveProps(prev); setProps(prev);
-        showToast('Error de conexión, no se eliminó');
+        showToast('Error de conexión, no se archivó');
       });
   }
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
