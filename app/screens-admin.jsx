@@ -98,21 +98,56 @@ function AseosScreen({ ctx }) {
 }
 
 function PropiedadesScreen({ ctx }) {
+  const [q, setQ] = useStateA('');
+  const query = q.trim().toLowerCase();
+  const filtradas = query
+    ? ctx.props.filter(p =>
+        (p.id || '').toLowerCase().includes(query) ||
+        (p.nombre || '').toLowerCase().includes(query)
+      )
+    : ctx.props;
+
   return (
     <div className="scrollarea">
-      <AppBar title="Propiedades" subtitle={ctx.props.length + ' activas'} onLogout={ctx.logout} />
+      <AppBar title="Propiedades" subtitle={filtradas.length + ' / ' + ctx.props.length} onLogout={ctx.logout}
+        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
+
+      <div style={{ padding: '4px 16px 8px' }}>
+        <div className="row gap-base" style={{ alignItems: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 10, padding: '8px 12px' }}>
+          <Icon name="filter" size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+          <input
+            type="search"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Buscar por código (#0086) o nombre…"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 14, color: 'var(--text-primary)', minWidth: 0 }}
+          />
+          {q && (
+            <button onClick={() => setQ('')} className="icon-btn" aria-label="Limpiar"
+              style={{ padding: 2 }}>
+              <Icon name="close" size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="prop-list">
-        {ctx.props.map(p => (
+        {filtradas.length === 0 && (
+          <div className="empty"><Icon name="home" size={28} /><div className="body">Sin resultados</div></div>
+        )}
+        {filtradas.map(p => (
           <div className="prop-row" key={p.id} onClick={() => ctx.openProp(p.id)}>
-            <div className="prop-thumb">{propInitials(p.nombre)}</div>
-            <div className="prop-main">
+            <span className="label sec" style={{ minWidth: 56, textAlign: 'left', fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)', fontWeight: 600 }}>{p.id}</span>
+            <div className="prop-main" style={{ minWidth: 0 }}>
               <div className="prop-name">{p.nombre}</div>
-              <div className="prop-addr">
-                <Icon name="location" size={14} style={{ color: 'var(--text-tertiary)' }} />
-                <span className="caption">{p.barrio}</span>
-              </div>
+              {p.direccion && (
+                <div className="prop-addr">
+                  <Icon name="location" size={14} style={{ color: 'var(--text-tertiary)' }} />
+                  <span className="caption">{p.direccion}</span>
+                </div>
+              )}
             </div>
-            <Icon name="chevron-right" size={20} style={{ color: 'var(--text-tertiary)' }} />
+            <Icon name="chevron-right" size={20} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
           </div>
         ))}
         <div style={{ height: 80 }}></div>
