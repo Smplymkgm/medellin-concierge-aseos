@@ -349,28 +349,40 @@ function ReassignSheet({ open, aseo, onClose, onAssign }) {
 
 /* ---- Agregar aseo extra: Full / Express toggle, cálculo precio ---- */
 function AgregarAseoSheet({ open, onClose, onAdd }) {
-  const [propId, setPropId] = useStateS(getProps()[0].id);
-  const [fecha, setFecha] = useStateS('2026-06-01');
+  // Robust contra getProps() vacío (cuando la app aún no terminó de cargar).
+  const firstProp = () => (getProps() || [])[0] || { id: '', precio: 0 };
+  const [propId, setPropId] = useStateS(() => firstProp().id);
+  const [fecha, setFecha] = useStateS(() => {
+    var t = new Date(); return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+  });
   const [asignada, setAsignada] = useStateS(null);
   const [tipo, setTipo] = useStateS('Full');
-  const [precio, setPrecio] = useStateS(getProps()[0].precio);
+  const [precio, setPrecio] = useStateS(() => firstProp().precio || 0);
   const [notas, setNotas] = useStateS('');
   const [query, setQuery] = useStateS('');
 
   useEffectS(() => {
     if (open) {
-      setPropId(getProps()[0].id); setFecha('2026-06-01'); setAsignada(null);
-      setTipo('Full'); setPrecio(getProps()[0].precio); setNotas(''); setQuery('');
+      const fp = firstProp();
+      setPropId(fp.id); setAsignada(null);
+      setTipo('Full'); setPrecio(fp.precio || 0); setNotas(''); setQuery('');
+      var t = new Date();
+      setFecha(t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0'));
     }
   }, [open]);
 
-  const prop = propById(propId);
+  const prop = propId ? propById(propId) : null;
   const base = prop ? prop.precio : 0;
   const finalPrecio = tipo === 'Express' ? Math.round(base * 0.60) : precio;
-  const cleaners = getPersonal().filter(p => p.rol === 'aseadora').map(p => p.nombre);
-  const filtered = getProps().filter(p => p.nombre.toLowerCase().includes(query.toLowerCase()));
+  const cleaners = (getPersonal() || []).filter(p => p.rol === 'aseadora').map(p => p.nombre);
+  const filtered = (getProps() || []).filter(p => (p.nombre || '').toLowerCase().includes(query.toLowerCase()));
 
-  function selectProp(id) { setPropId(id); setPrecio(propById(id).precio); setQuery(''); }
+  function selectProp(id) {
+    setPropId(id);
+    const found = propById(id);
+    setPrecio(found ? found.precio : 0);
+    setQuery('');
+  }
 
   const footer = (
     <button className="btn btn-primary btn-block btn-lg" onClick={() => onAdd({ propId, fecha, asignada, tipo, precio: finalPrecio, notas })}>
