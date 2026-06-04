@@ -97,6 +97,9 @@ function aseoEnriched(a) {
     barrio: p.barrio || '',
     direccion: p.direccion || '',
     claves: p.claves || {},
+    // propagar el acceso estructurado al objeto enriquecido para que
+    // la AseoCard lo lea desde a.accesoEstructurado
+    accesoEstructurado: a.accesoEstructurado || p.accesoEstructurado || null,
     precio: a.precio != null ? a.precio : (p.precio || 0),
     noches: nights(a.checkin, a.checkout),
   };
