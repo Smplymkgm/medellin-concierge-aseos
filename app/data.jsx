@@ -64,7 +64,11 @@ function aseoEnriched(a) {
     // propagar el acceso estructurado al objeto enriquecido para que
     // la AseoCard lo lea desde a.accesoEstructurado
     accesoEstructurado: a.accesoEstructurado || p.accesoEstructurado || null,
-    precio: a.precio != null ? a.precio : (p.precio || 0),
+    // Si el aseo tiene precio 0 (caso: el iCal lo creó cuando la propiedad
+    // todavía no tenía precio), caer al precio actual de la propiedad para
+    // el display. El valor en el spreadsheet sigue siendo 0 hasta que
+    // corras 'Resincronizar precios de aseos' en el menú.
+    precio: (a.precio && a.precio > 0) ? a.precio : (p.precio || 0),
     noches: nights(a.checkin, a.checkout),
   };
 }

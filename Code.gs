@@ -136,6 +136,10 @@ function doPost(e) {
       var st = recuperarLinksVideos();
       return respond(true, st);
     }
+    if (action === "runResincronizarPrecios") {
+      resincronizarPreciosAseos();
+      return respond(true, { done: true });
+    }
     if (action === "inspectVideos") {
       var h = getSS().getSheetByName(CONFIG.hojaVideos);
       var lr = h ? h.getLastRow() : 0;
@@ -1484,6 +1488,7 @@ function onOpen() {
     .addItem("Convertir links de video a HYPERLINK", "convertirVideosAHyperlink")
     .addItem("Compartir todos los videos (anyone w/ link)", "compartirTodosLosVideos")
     .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
+    .addItem("Resincronizar precios de aseos",               "resincronizarPreciosAseos")
     .addToUi();
 }
 
@@ -1909,6 +1914,44 @@ function migrarFormJsonAColumnas() {
 
   ss.toast(migradas + " migradas · " + omitidas + " sin cambios", "Migración", 6);
   Logger.log("Migración form: " + migradas + " filas migradas, " + omitidas + " omitidas");
+}
+
+// ============================================================
+// RESINCRONIZAR PRECIOS DE ASEOS
+// ============================================================
+// Para cada aseo en "Todos los Aseos" cuyo precio (col I) sea 0,
+// busca el precio actual de la propiedad correspondiente y lo asigna.
+// No toca aseos con precio > 0 (preserva ajustes manuales) ni
+// Cancelados.
+
+function resincronizarPreciosAseos() {
+  var ss = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return;
+
+  // Mapa idProp → precio
+  var props = getPropiedades();
+  var precioMap = {};
+  for (var i = 0; i < props.length; i++) precioMap[props[i].id] = props[i].precioAseo || 0;
+
+  var lr = hoja.getLastRow();
+  var datos = hoja.getRange(2, 1, lr - 1, 9).getValues();
+  var updates = [];
+  for (var r = 0; r < datos.length; r++) {
+    var row = datos[r];
+    var idProp = String(row[1] || "").trim();
+    var estado = String(row[7] || "");
+    var precio = Number(row[8]) || 0;
+    if (estado === "Cancelado") continue;
+    if (precio > 0) continue;
+    var nuevo = precioMap[idProp];
+    if (!nuevo) continue;
+    hoja.getRange(r + 2, 9).setValue(nuevo);
+    updates.push(String(row[0]) + " → " + nuevo);
+  }
+
+  ss.toast(updates.length + " aseos actualizados", "Precios", 6);
+  Logger.log("resincronizarPreciosAseos: " + updates.join(", "));
 }
 
 // ============================================================
