@@ -150,7 +150,11 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                 <Icon name="money" size={16} />
                 <div className="keypair">
                   <span className="detail-label">Precio aseo</span>
-                  <span className="detail-value">{fmtCOP(a.precio)}</span>
+                  <span className="detail-value">
+                    {a.precio > 0
+                      ? fmtCOP(a.precio)
+                      : <span className="caption sec">Sin cargo · paga propietario</span>}
+                  </span>
                 </div>
               </div>
             )}
