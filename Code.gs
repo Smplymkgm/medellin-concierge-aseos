@@ -106,74 +106,12 @@ function doPost(e) {
     if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
-    if (action === "listarVideos")        return handleListarVideos(body);
-    if (action === "inspectAseos") {
-      var hh = getSS().getSheetByName(CONFIG.hojaAseos);
-      var lc = hh.getLastColumn();
-      return respond(true, {
-        lastCol: lc,
-        headers: hh.getRange(1, 1, 1, lc).getValues()[0],
-        hasFilter: !!hh.getFilter(),
-      });
-    }
-    if (action === "runCrearFiltro") {
-      crearFiltroAseos();
-      return respond(true, { done: true });
-    }
-    if (action === "runMigrarForm") {
-      migrarFormJsonAColumnas();
-      return respond(true, { done: true });
-    }
-    if (action === "runConvertirVideos") {
-      convertirVideosAHyperlink();
-      return respond(true, { done: true });
-    }
-    if (action === "runCompartirVideos") {
-      compartirTodosLosVideos();
-      return respond(true, { done: true });
-    }
-    if (action === "runRecuperarLinks") {
-      var st = recuperarLinksVideos();
-      return respond(true, st);
-    }
-    if (action === "runResincronizarPrecios") {
-      resincronizarPreciosAseos();
-      return respond(true, { done: true });
-    }
-    if (action === "inspectVideos") {
-      var h = getSS().getSheetByName(CONFIG.hojaVideos);
-      var lr = h ? h.getLastRow() : 0;
-      var rows = lr >= 2 ? h.getRange(2, 1, lr - 1, 7).getValues() : [];
-      var formulas = lr >= 2 ? h.getRange(2, 5, lr - 1, 1).getFormulas() : [];
-      var ha = getSS().getSheetByName(CONFIG.hojaAseos);
-      var lra = ha ? ha.getLastRow() : 0;
-      var aseosVideos = [];
-      if (ha && lra >= 2 && ha.getLastColumn() >= 37) {
-        var v = ha.getRange(2, 37, lra - 1, 1).getValues();
-        var fa = ha.getRange(2, 37, lra - 1, 1).getFormulas();
-        var codigos = ha.getRange(2, 1, lra - 1, 1).getValues();
-        for (var i = 0; i < v.length; i++) {
-          if (v[i][0] || fa[i][0]) {
-            aseosVideos.push({ codigo: codigos[i][0], val: v[i][0], formula: fa[i][0] });
-          }
-        }
-      }
-      return respond(true, {
-        videosSheet: rows.map(function(r, i) {
-          return { codigo: r[0], link: r[4], formula: formulas[i][0] };
-        }),
-        aseosVideos: aseosVideos,
-      });
-    }
 
-    if (action === "debug") {
-      var ss2 = getSS();
-      var sheets2 = ss2 ? ss2.getSheets().map(function(h){return h.getName();}) : [];
-      var h2 = ss2 ? ss2.getSheetByName(CONFIG.hojaPersonal) : null;
-      var rows2 = h2 ? h2.getLastRow() : -1;
-      var row0 = (h2 && rows2 > 1) ? h2.getRange(2,1,1,4).getValues()[0] : [];
-      return respond(true, {sheets: sheets2, personalRows: rows2, row0: row0, ssId: ss2 ? ss2.getId() : 'null'});
-    }
+    // Endpoints debug/inspect/run* eliminados en la auditoría de
+    // producción. Las funciones administrativas se ejecutan vía el menú
+    // del spreadsheet (require sesión Google del owner) y no son
+    // alcanzables anónimamente. Mantener doPost minimal reduce superficie
+    // de ataque.
     if (action === 'getDatos') {
       var n2 = body.nombre || '';
       var r2 = body.rol || 'aseadora';
@@ -1775,70 +1713,10 @@ function getAseosPorAseadora(nombre) {
 // SETUP helpers (correr UNA VEZ para poblar datos)
 // ============================================================
 
-function setupInicial() {
-  llenarTodo();
-}
-
-function debugSheets() {
-  var ss = getSS();
-  var sheets = ss.getSheets();
-  var names = sheets.map(function(s) { return s.getName() + '(' + s.getLastRow() + ')'; });
-  Logger.log(names.join(', '));
-}
-
-function llenarTodo() {
-  var ss = getSS();
-  var hoja = ss.getSheetByName("Personal");
-  if (hoja && hoja.getLastRow() < 2) {
-    var datos = [
-      [true, "Ana", "1234", "ayarsakarina@gmail.com", "", "", ""],
-      [true, "Fernanda", "5678", "", "", "", ""],
-      [true, "Claudia", "9012", "Cpatriciamonterrozalopez@gmail.com", "", "", ""],
-      [true, "Admin", "2025", "", "", "", ""]
-    ];
-    hoja.getRange(2, 1, datos.length, 7).setValues(datos);
-    Logger.log("Personal: " + datos.length + " rows");
-  } else { Logger.log("Personal: " + (hoja ? "already has data" : "not found")); }
-  var master = ss.getSheetByName("Todas las Reservas");
-  var aseos = ss.getSheetByName("Todos los Aseos");
-  if (master && aseos && aseos.getLastRow() < 2 && master.getLastRow() > 1) {
-    var mData = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
-    var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
-    var filas = [];
-    for (var i = 0; i < mData.length; i++) {
-      var r = mData[i];
-      if (!r[0]) continue;
-      filas.push([String(r[0]),String(r[1]),String(r[2]),mDisp[i][0],mDisp[i][1],Number(r[5])||0,String(r[7]||""),"Pendiente",Number(r[8])||0,String(r[9]||""),String(r[10]||""),"",""]);
-    }
-    if (filas.length > 0) aseos.getRange(2, 1, filas.length, 13).setValues(filas);
-    Logger.log("Aseos: " + filas.length + " rows");
-  } else { Logger.log("Aseos: " + (aseos ? "already has data or no master" : "not found")); }
-}
-
-function fixSheetNames() {
-  var ss = getSS();
-  var sheets = ss.getSheets();
-  var renames = [
-    ["Todas las Reservas", "Todas las Reservas"],
-    ["Todos los Aseos", "Todos los Aseos"],
-    ["Propiedades", "Propiedades"],
-    ["Personal", "Personal"],
-    ["Videos Aseos", "Videos Aseos"]
-  ];
-  for (var i = 0; i < sheets.length; i++) {
-    var name = sheets[i].getName();
-    for (var j = 0; j < renames.length; j++) {
-      if (name.indexOf(renames[j][0]) !== -1 && name !== renames[j][1]) {
-        Logger.log("Renaming: " + name + " -> " + renames[j][1]);
-        try { sheets[i].setName(renames[j][1]); } catch(e) { Logger.log("Error: " + e.message); }
-        break;
-      }
-    }
-  }
-  Logger.log("Done renaming");
-}
-
-function getSpreadsheetId() { Logger.log(getSS().getId()); }
+// (Helpers de setup one-shot eliminados en la auditoría de producción:
+//  setupInicial, debugSheets, llenarTodo, fixSheetNames, getSpreadsheetId.
+//  Ya cumplieron su rol cuando se montó el spreadsheet. Si en el futuro
+//  hace falta repoblar, ver historial git commit b521d9a o anteriores.)
 
 // ============================================================
 // MIGRACIÓN: convertir filas con JSON o multi-línea (cols 16/17/18

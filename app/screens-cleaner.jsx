@@ -85,52 +85,10 @@ function HoyScreen({ ctx }) {
   );
 }
 
-/* ============================================================
-   Todos — lista completa de aseos asignados a la aseadora,
-   agrupada por mes, ordenada por fecha desc
-   ============================================================ */
-function TodosScreen({ ctx }) {
-  const mine = ctx.aseos.filter(a => a.asignada === ctx.user);
-
-  // Ordenar por checkout descendente y agrupar por mes
-  const sorted = [...mine].sort((a, b) => b.checkout - a.checkout);
-  const groups = [];
-  sorted.forEach(a => {
-    const k = a.checkout.getFullYear() + '-' + a.checkout.getMonth();
-    let g = groups.find(g => g.key === k);
-    if (!g) { g = { key: k, year: a.checkout.getFullYear(), month: a.checkout.getMonth(), items: [] }; groups.push(g); }
-    g.items.push(a);
-  });
-
-  const totalDone   = mine.filter(a => a.status === 'done').length;
-  const totalActivos = mine.length - totalDone;
-
-  return (
-    <div className="scrollarea">
-      <AppBar title="Todos" subtitle={mine.length + ' en total · ' + totalActivos + ' activos · ' + totalDone + ' completados'} onLogout={ctx.logout}
-        actions={<button className="icon-btn" onClick={ctx.openSync} disabled={ctx.syncing} aria-label="Actualizar"><Icon name="sync" size={20} className={ctx.syncing ? 'spin' : ''} /></button>} />
-      <div className="aseo-list">
-        {groups.length === 0 && (
-          <div className="empty"><Icon name="list" size={28} /><div className="body">No tienes aseos asignados</div></div>
-        )}
-        {groups.map(g => (
-          <div className="day-group" key={g.key}>
-            <div className="day-head">
-              <span className="label sec" style={{ textTransform: 'capitalize' }}>{MONTHS[g.month]} {g.year}</span>
-              <span className="caption count">{g.items.length}</span>
-            </div>
-            {g.items.map(a => (
-              <AseoCard key={a.codigo} aseo={a} role="aseadora"
-                open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
-                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
-            ))}
-          </div>
-        ))}
-        <div style={{ height: 80 }}></div>
-      </div>
-    </div>
-  );
-}
+/* TodosScreen removido en la auditoría de producción — el tab "Todos"
+   de aseadora se retiró cuando HoyScreen empezó a mostrar Atrasados +
+   Hoy + Próximos en la misma vista. Si se necesita la historia, ver
+   git log antes de este commit. */
 
 function CalendarioScreen({ ctx, role }) {
   const list = role === 'admin' ? ctx.aseos : ctx.aseos.filter(a => a.asignada === ctx.user);
@@ -277,4 +235,4 @@ function HistorialScreen({ ctx }) {
   );
 }
 
-Object.assign(window, { HoyScreen, TodosScreen, CalendarioScreen, HistorialScreen, MonthRangePicker, filterByPeriod, periodLabel, sortAseos, groupByDay });
+Object.assign(window, { HoyScreen, CalendarioScreen, HistorialScreen, MonthRangePicker, filterByPeriod, periodLabel, sortAseos, groupByDay });
