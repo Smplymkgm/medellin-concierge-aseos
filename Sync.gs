@@ -36,11 +36,17 @@ function sincronizarCalendarios() {
     aplicarDropdowns(hoja);
 
     // Recolectar reservas activas del iCal — dedupe por (idProp, codigo)
+    // FETCH PRIMERO, luego decidimos si limpiar o no. Esto evita que una
+    // caída temporal de Airbnb borre el master sheet entero.
     var reservas = [];
     var vistas   = {};
+    var propsConIcal = 0;
+    var fetchesExitosos = 0;
     for (var p of propiedades) {
       if (!p.icalUrl) continue;
+      propsConIcal++;
       var lista = obtenerReservasDeICal(p);
+      if (lista && lista.length > 0) fetchesExitosos++;
       for (var k = 0; k < lista.length; k++) {
         var r = lista[k];
         var key = (r.id || "") + ":" + (r.codigo || "");
@@ -50,6 +56,18 @@ function sincronizarCalendarios() {
       }
     }
     reservas.sort(function(a,b){ return fechaADate(a.checkout) - fechaADate(b.checkout); });
+
+    // CIRCUIT BREAKER: si esperábamos al menos N props con iCal y CERO
+    // devolvieron datos, probablemente Airbnb está caído o cambió el
+    // formato. Abortamos sin tocar el master para no perder reservas
+    // confirmadas. La próxima sync (6h) reintenta.
+    if (propsConIcal > 0 && fetchesExitosos === 0) {
+      Logger.log("sincronizarCalendarios: " + propsConIcal + " iCals esperadas, 0 respondieron. Aborto para no perder datos.");
+      SpreadsheetApp.getActiveSpreadsheet().toast(
+        "Airbnb no respondió. Sync cancelada para proteger datos. Reintenta en 6h.",
+        "Airbnb Sync", 8);
+      return;
+    }
 
     // Soft-cancel: lo que estaba guardado y no llegó del iCal queda Cancelada
     // (solo si estaba Confirmada/Pendiente; las ya Finalizadas/Canceladas se preservan)
