@@ -1249,6 +1249,22 @@ function handleGetUploadUrl(body) {
 // VIDEOS — registrarVideo (despues del upload)
 // ============================================================
 
+// Actualiza la celda Video (col 37) en hoja Aseos para el aseo con
+// ese código, dejándola como =HYPERLINK clickeable. Idempotente.
+function actualizarVideoEnAseo(codigo, videoLink) {
+  if (!codigo || !videoLink) return false;
+  var hoja = getSS().getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2 || hoja.getLastColumn() < 37) return false;
+  var codigos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < codigos.length; i++) {
+    if (String(codigos[i][0]) === codigo) {
+      hoja.getRange(i + 2, 37).setValue(buildHyperlink(videoLink, "Ver video"));
+      return true;
+    }
+  }
+  return false;
+}
+
 function handleRegistrarVideo(body) {
   var codigo    = String(body.codigo    || "").trim();
   var propiedad = String(body.propiedad || "").trim();
@@ -1288,6 +1304,13 @@ function handleRegistrarVideo(body) {
     : (String(body.videoLink || "").trim() || filename);
 
   registrarVideoEnHoja({ codigo: codigo, propiedad: propiedad, aseadora: aseadora, checkout: checkout, videoLink: videoLink, notas: notas });
+
+  // También parchea col 37 de "Todos los Aseos" para que el video del
+  // aseo principal quede como HYPERLINK clickeable. Esto cubre el caso
+  // Safari + CORS donde completarAseo no tenía el fileId al momento de
+  // escribir.
+  try { actualizarVideoEnAseo(codigo, videoLink); } catch(e) { Logger.log("actualizarVideoEnAseo: " + e.message); }
+
   return respond(true, { fileId: fileId, link: videoLink });
 }
 
@@ -1469,26 +1492,31 @@ function autoCompletarAseosPasados() {
 // ============================================================
 
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu("Medellin Concierge")
-    .addItem("Sincronizar Airbnb",            "sincronizarCalendarios")
-    .addItem("Sincronizar Google Calendar",   "sincronizarGoogleCalendar")
+  var ui = SpreadsheetApp.getUi();
+
+  // Submenú de setup/migraciones one-shot. Ya corrieron casi todas;
+  // se queda accesible pero fuera del flujo diario.
+  var setupMenu = ui.createMenu("Setup (avanzado)")
+    .addItem("Crear triggers automáticos",                   "crearTriggersAutomaticos")
+    .addItem("Agregar Admin a Personal",                     "agregarAdmin")
+    .addItem("Limpiar hojas duplicadas con emojis",          "limpiarHojasDuplicadas")
     .addSeparator()
-    .addItem("Crear triggers automaticos",    "crearTriggersAutomaticos")
-    .addItem("Agregar Admin a Personal",      "agregarAdmin")
+    .addItem("Migrar form viejo (JSON → columnas)",          "migrarFormJsonAColumnas")
+    .addItem("Convertir links de video a HYPERLINK",         "convertirVideosAHyperlink")
+    .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos");
+
+  ui.createMenu("Medellin Concierge")
+    .addItem("Sincronizar Airbnb",                           "sincronizarCalendarios")
+    .addItem("Sincronizar Google Calendar",                  "sincronizarGoogleCalendar")
     .addSeparator()
-    .addItem("Limpiar hojas duplicadas con emojis", "limpiarHojasDuplicadas")
-    .addSeparator()
-    .addItem("Self-test (diagnóstico)",             "runSelfTest")
-    .addSeparator()
-    .addItem("Ordenar hoja Aseos por fecha",        "ordenarHojaAseosPorFecha")
-    .addItem("Activar/refrescar filtro por mes",    "crearFiltroAseos")
-    .addSeparator()
-    .addItem("Migrar form viejo (JSON → columnas)", "migrarFormJsonAColumnas")
-    .addItem("Convertir links de video a HYPERLINK", "convertirVideosAHyperlink")
-    .addItem("Compartir todos los videos (anyone w/ link)", "compartirTodosLosVideos")
-    .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
+    .addItem("Ordenar hoja Aseos por fecha",                 "ordenarHojaAseosPorFecha")
+    .addItem("Activar/refrescar filtro por mes",             "crearFiltroAseos")
     .addItem("Resincronizar precios de aseos",               "resincronizarPreciosAseos")
+    .addSeparator()
+    .addItem("Compartir todos los videos en Drive",          "compartirTodosLosVideos")
+    .addSeparator()
+    .addItem("Self-test (diagnóstico)",                      "runSelfTest")
+    .addSubMenu(setupMenu)
     .addToUi();
 }
 
