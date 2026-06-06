@@ -36,7 +36,7 @@ function Avatar({ name, className = 'avatar' }) {
 /* ============================================================
    Aseo card — expandable, status border, optional priority
    ============================================================ */
-function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSinForm, role }) {
+function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSinForm, onMoverFecha, role }) {
   const a = aseoEnriched(aseo);
   const cls = ['aseo-card', 's-' + a.status, a.priority ? 'priority' : '', open ? 'open' : ''].join(' ');
   return (
@@ -168,6 +168,12 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                         {a.asignada ? 'Reasignar' : 'Asignar'}
                       </button>
                       <button className="btn btn-secondary" onClick={() => onComplete(a)}>Completar</button>
+                      {onMoverFecha && (
+                        <button className="btn btn-ghost" onClick={() => onMoverFecha(a)}
+                          title="Cambiar la fecha del aseo">
+                          Cambiar fecha
+                        </button>
+                      )}
                       {a.asignada && onFinalizarSinForm && (
                         <button className="btn btn-ghost" onClick={() => onFinalizarSinForm(a)}
                           title="Marca como completado sin llenar el form (para aseos viejos)">

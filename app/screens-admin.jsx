@@ -87,7 +87,8 @@ function AseosScreen({ ctx }) {
               <AseoCard key={a.codigo} aseo={a} role="admin"
                 open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
                 onComplete={ctx.openCompletar} onReassign={ctx.openReassign}
-                onFinalizarSinForm={ctx.doFinalizarSinForm} />
+                onFinalizarSinForm={ctx.doFinalizarSinForm}
+                onMoverFecha={ctx.openMoverFecha} />
             ))}
           </div>
         ))}

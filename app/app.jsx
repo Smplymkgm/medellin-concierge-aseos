@@ -224,6 +224,8 @@ function App() {
   const [completarOpen, setCompletarOpen] = useStateL(false);
   const [reassign, setReassign]         = useStateL(null);
   const [reassignOpen, setReassignOpen] = useStateL(false);
+  const [moverFecha, setMoverFecha]     = useStateL(null);
+  const [moverFechaOpen, setMoverFechaOpen] = useStateL(false);
   const [agregarOpen, setAgregarOpen]   = useStateL(false);
 
   // calendar
@@ -360,6 +362,37 @@ function App() {
   }
 
   function openReassign(a) { setReassign(a); setReassignOpen(true); }
+  function openMoverFecha(a) { setMoverFecha(a); setMoverFechaOpen(true); }
+  function doMoverFecha(a, fechaIso) {
+    // fechaIso = "yyyy-MM-dd" → dd/MM/yyyy
+    const [y, m, dd] = fechaIso.split('-').map(Number);
+    const nuevaFechaStr = String(dd).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + y;
+    const nuevaDate = new Date(y, m - 1, dd);
+
+    const prev = aseos;
+    setAseos(list => list.map(x => x.codigo === a.codigo
+      ? { ...x, checkin: nuevaDate, checkout: nuevaDate,
+          status: x.status === 'done' ? 'done'
+                  : !x.asignada ? 'unassigned'
+                  : sameDay(nuevaDate, TODAY) ? 'urgent' : 'pending',
+          priority: sameDay(nuevaDate, TODAY) && x.status !== 'done' }
+      : x));
+    setMoverFechaOpen(false);
+    showToast('Cambiando fecha…');
+
+    gasPost({ action: 'moverAseo', codigo: a.codigo, nuevaFecha: nuevaFechaStr })
+      .then(res => {
+        if (res && res.ok) showToast('Fecha actualizada');
+        else {
+          setAseos(prev);
+          showToast('Error: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(() => {
+        setAseos(prev);
+        showToast('Error de conexión');
+      });
+  }
   function doAssign(a, who) {
     setAseos(list => list.map(x => x.codigo === a.codigo
       ? { ...x, asignada: who, status: who ? (x.status === 'unassigned' ? (sameDay(x.checkout, TODAY) ? 'urgent' : 'pending') : x.status) : 'unassigned' }
@@ -588,6 +621,7 @@ function App() {
     user: session.nombre, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
     openEditProp, openAddProp, openAddCleaner, openEditCleaner,
+    openMoverFecha,
     doFinalizarSinForm, doDeleteProp,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
     filter, setFilter,
@@ -650,6 +684,7 @@ function App() {
 
         <CompletarSheet open={completarOpen} aseo={completar} onClose={() => setCompletarOpen(false)} onDone={doneCompletar} />
         <ReassignSheet open={reassignOpen} aseo={reassign} onClose={() => setReassignOpen(false)} onAssign={doAssign} />
+        <MoverFechaSheet open={moverFechaOpen} aseo={moverFecha} onClose={() => setMoverFechaOpen(false)} onSave={doMoverFecha} />
         <AgregarAseoSheet open={agregarOpen} onClose={() => setAgregarOpen(false)} onAdd={doAgregar} />
         <EditarPropiedadSheet open={editPropOpen} prop={editProp} onClose={() => setEditPropOpen(false)} onSave={doSaveProp} />
         <AgregarAseadoraSheet open={addCleanerOpen} onClose={() => setAddCleanerOpen(false)} onAdd={doAddCleaner} />

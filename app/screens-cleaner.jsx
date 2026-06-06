@@ -107,7 +107,8 @@ function CalendarioScreen({ ctx, role }) {
             open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
             onComplete={ctx.openCompletar}
             onReassign={role === 'admin' ? ctx.openReassign : undefined}
-            onFinalizarSinForm={role === 'admin' ? ctx.doFinalizarSinForm : undefined} />
+            onFinalizarSinForm={role === 'admin' ? ctx.doFinalizarSinForm : undefined}
+            onMoverFecha={role === 'admin' ? ctx.openMoverFecha : undefined} />
         ))}
         <div style={{ height: 80 }}></div>
       </div>
