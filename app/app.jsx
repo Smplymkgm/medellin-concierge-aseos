@@ -511,17 +511,53 @@ function App() {
 
   function doAgregar(data) {
     const prop = propById(data.propId);
+    if (!prop) { showToast('Propiedad no encontrada'); return; }
+
+    // Convert yyyy-MM-dd (input HTML) → dd/MM/yyyy (formato spreadsheet)
     const [y, m, dd] = data.fecha.split('-').map(Number);
     const co = new Date(y, m - 1, dd);
-    const nuevo = {
-      codigo: 'HM' + String(Math.floor(Math.random()*9000)+1000),
+    const checkoutStr = String(dd).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + y;
+
+    // Optimistic insert con código temporal; el backend devuelve el código real
+    const tmpCodigo = 'PENDING-' + Date.now();
+    const optimistic = {
+      codigo: tmpCodigo,
       prop: data.propId, checkin: co, checkout: co,
       status: data.asignada ? (sameDay(co, TODAY) ? 'urgent' : 'pending') : 'unassigned',
-      asignada: data.asignada, priority: false, notas: data.notas, precio: data.precio, tipo: data.tipo,
+      asignada: data.asignada, priority: false,
+      notas: data.notas, precio: data.precio, tipo: data.tipo,
+      entrada: '', salida: '', formFilled: false,
     };
-    setAseos(list => [...list, nuevo]);
+    setAseos(list => [...list, optimistic]);
     setAgregarOpen(false);
-    showToast('Aseo agregado · ' + prop.nombre);
+    showToast('Guardando…');
+
+    gasPost({
+      action: 'agregarAseo',
+      propiedad: prop.nombre,
+      idProp:    data.propId,
+      checkout:  checkoutStr,
+      aseadora:  data.asignada || '',
+      precio:    data.precio || 0,
+      notas:     data.notas || '',
+      // backend completa acceso desde la propiedad si no lo mandamos
+    }).then(res => {
+      if (res && res.ok && res.data) {
+        // Reemplazar el optimistic con los datos reales del backend
+        const realCodigo = res.data.codigo;
+        setAseos(list => list.map(a => a.codigo === tmpCodigo
+          ? { ...a, codigo: realCodigo }
+          : a));
+        showToast('Aseo manual creado · ' + realCodigo);
+      } else {
+        // Rollback
+        setAseos(list => list.filter(a => a.codigo !== tmpCodigo));
+        showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => {
+      setAseos(list => list.filter(a => a.codigo !== tmpCodigo));
+      showToast('Error de conexión, no se guardó');
+    });
   }
 
   // Loading screen while fetching personal list (skip if session already restored)

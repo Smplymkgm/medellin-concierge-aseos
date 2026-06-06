@@ -865,26 +865,66 @@ function handleAgregarAseo(body) {
   if (!propiedad || !checkout) return respond(false, null, "Propiedad y fecha requeridas");
   if (!fechaADate(checkout))   return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
 
-  var ss   = getSS();
-  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
+  // Si vino sin idProp pero sí con propiedad, intentar inferir desde el
+  // catálogo
+  if (!idProp && propiedad) {
+    var props = getPropiedades();
+    for (var i = 0; i < props.length; i++) {
+      if (props[i].nombre === propiedad) { idProp = props[i].id; break; }
+    }
+  }
+  // Si no vino acceso, tomar el de la propiedad
+  if (!acceso && idProp) {
+    var ps = getPropiedades();
+    for (var j = 0; j < ps.length; j++) {
+      if (ps[j].id === idProp) { acceso = ps[j].acceso || ""; break; }
+    }
+  }
 
-  var lastRow = hoja.getLastRow();
-  var codigo = "MAN" + String(lastRow).padStart(4, "0");
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
+  try {
+    var ss   = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
 
-  var fila = [
-    codigo, idProp, propiedad,
-    checkout, checkout, 0,
-    "Pendiente", aseadora, precio,
-    notas, acceso, "", ""
-  ];
-  hoja.appendRow(fila);
+    // Código único basado en timestamp + 2 chars random — sin colisión
+    // ni dependencia del lastRow (que cambia con cada borrado/insert).
+    var ts  = Date.now().toString(36).toUpperCase();
+    var rnd = Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0");
+    var codigo = "MAN-" + ts + rnd;
 
-  var newRow = hoja.getLastRow();
-  hoja.getRange(newRow, 1, 1, 11).setNumberFormat("@");
-  hoja.getRange(newRow, 9).setNumberFormat("0");
+    var fila = [
+      codigo, idProp, propiedad,
+      checkout, checkout, 0,
+      aseadora, "Pendiente", precio,
+      notas, acceso, "", ""
+    ];
+    hoja.appendRow(fila);
 
-  return respond(true, { codigo: codigo });
+    var newRow = hoja.getLastRow();
+    hoja.getRange(newRow, 4, 1, 2).setNumberFormat("@");      // fechas como texto
+    hoja.getRange(newRow, 9, 1, 1).setNumberFormat("$#,##0"); // precio
+    // Tinte amarillento para que se distinga visualmente de los aseos
+    // que vinieron del iCal
+    hoja.getRange(newRow, 1, 1, 13).setBackground("#fff9e6").setFontFamily("Arial").setFontSize(10);
+
+    return respond(true, {
+      codigo:    codigo,
+      idProp:    idProp,
+      propiedad: propiedad,
+      checkin:   checkout,
+      checkout:  checkout,
+      noches:    0,
+      asignada:  aseadora,
+      estado:    "Pendiente",
+      precio:    precio,
+      notas:     notas,
+      acceso:    acceso,
+    });
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
 }
 
 // ============================================================
