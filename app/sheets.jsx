@@ -712,4 +712,45 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
   );
 }
 
-Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet, EditarAseadoraSheet });
+/* ---- Mover fecha: cambia la fecha de checkout del aseo ---- */
+function MoverFechaSheet({ open, aseo, onClose, onSave }) {
+  const [fecha, setFecha] = useStateS('');
+  useEffectS(() => {
+    if (open && aseo) {
+      const d = aseo.checkout || new Date();
+      const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      setFecha(iso);
+    }
+  }, [open, aseo]);
+
+  if (!aseo) return null;
+  const a = aseoEnriched(aseo);
+  const canSave = !!fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha);
+
+  const footer = (
+    <button className="btn btn-primary btn-block btn-lg" disabled={!canSave}
+      onClick={() => onSave(aseo, fecha)}>Cambiar fecha</button>
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Cambiar fecha del aseo" footer={footer} height="auto">
+      <div className="row gap-base" style={{ marginBottom: 16 }}>
+        <div className="prop-thumb" style={{ width: 40, height: 40, fontSize: 13 }}>{propInitials(a.propNombre)}</div>
+        <div style={{ minWidth: 0 }}>
+          <div className="h3">{a.propNombre}</div>
+          <div className="caption">{a.codigo} · actual: {fmtDate(a.checkout)}</div>
+        </div>
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Nueva fecha</label>
+        <input type="date" className="text-input" value={fecha} onChange={e => setFecha(e.target.value)} />
+        <div className="caption" style={{ marginTop: 6 }}>
+          La aseadora asignada recibe el cambio inmediatamente. El historial respeta la nueva fecha.
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+Object.assign(window, { CompletarSheet, ReassignSheet, AgregarAseoSheet, EditarPropiedadSheet, AgregarAseadoraSheet, EditarAseadoraSheet, MoverFechaSheet });
