@@ -187,6 +187,9 @@ function parsearICal(texto, prop) {
     );
     if (isNaN(fi.getTime()) || isNaN(fo.getTime())) continue;
     if (fo <= fi) continue;
+    // Ignorar eventos con STATUS:CANCELLED explícito en el iCal
+    var icalStatus = extraer(ev, "STATUS") || "";
+    if (icalStatus.toUpperCase() === "CANCELLED") continue;
     var desc = extraer(ev, "DESCRIPTION") || "";
     var hm   = desc.match(/reservations\/details\/(HM[A-Z0-9]+)/);
     var uid  = extraer(ev, "UID") || "";

@@ -72,11 +72,13 @@ function transformAseos(apiAseos) {
     var checkout = parseDateStr(a.checkout);
     var checkin  = parseDateStr(a.checkin);
     checkout.setHours(0, 0, 0, 0);
-    var isDone = a.estado === 'Completado' || a.estado === 'Cancelado';
+    var isCancelled = a.estado === 'Cancelado';
+    var isDone      = a.estado === 'Completado';
     var isToday = sameDay(checkout, hoy);
     var isPast  = checkout < hoy;
-    var status  = isDone        ? 'done'       :
-                  !a.asignada   ? 'unassigned' :
+    var status  = isCancelled   ? 'cancelled'  :
+                  isDone        ? 'done'        :
+                  !a.asignada   ? 'unassigned'  :
                   (isToday || isPast) ? 'urgent' : 'pending';
     return {
       codigo:   a.codigo,

@@ -1473,6 +1473,56 @@ function autoCompletarAseosPasados() {
 }
 
 // ============================================================
+// onEdit — normalizar estado + aplicar color de fila en Todos los Aseos
+// ============================================================
+// Trigger simple: se activa cuando el owner edita manualmente col H (Estado).
+// 1. Normaliza "Cancelada" → "Cancelado" (el master sheet usa femenino).
+// 2. Aplica background según estado para que la fila cambie de color.
+function onEdit(e) {
+  if (!e) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== CONFIG.hojaAseos) return;
+  var col = e.range.getColumn();
+  var row = e.range.getRow();
+  if (row < 2 || col !== 8) return; // col 8 = Estado
+  var val = String(e.value || "").trim();
+  // Normalizar femenino → masculino
+  if (val === "Cancelada") {
+    e.range.setValue("Cancelado");
+    val = "Cancelado";
+  }
+  var lastCol = Math.max(sheet.getLastColumn(), 13);
+  var bg = val === "Cancelado"  ? "#fff3f3"
+         : val === "Completado" ? "#e8f5e9"
+         : "#ffffff";
+  sheet.getRange(row, 1, 1, lastCol).setBackground(bg);
+}
+
+// One-shot: normaliza todas las filas de Todos los Aseos que tengan "Cancelada"
+// y aplica background. Correr desde menú → Setup (avanzado).
+function normalizarEstadosCancelados() {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return;
+  var lr   = hoja.getLastRow() - 1;
+  var vals = hoja.getRange(2, 8, lr, 1).getValues();
+  var fixed = 0;
+  for (var i = 0; i < vals.length; i++) {
+    var v = String(vals[i][0] || "").trim();
+    if (v === "Cancelada") {
+      hoja.getRange(i + 2, 8).setValue("Cancelado");
+      hoja.getRange(i + 2, 1, 1, Math.max(hoja.getLastColumn(), 13)).setBackground("#fff3f3");
+      fixed++;
+    } else if (v === "Cancelado") {
+      // Ya correcto — solo aplicar color si falta
+      hoja.getRange(i + 2, 1, 1, Math.max(hoja.getLastColumn(), 13)).setBackground("#fff3f3");
+      fixed++;
+    }
+  }
+  ss.toast(fixed + " filas normalizadas/coloreadas", "Cancelados", 4);
+}
+
+// ============================================================
 // MENU
 // ============================================================
 
@@ -1488,7 +1538,8 @@ function onOpen() {
     .addSeparator()
     .addItem("Migrar form viejo (JSON → columnas)",          "migrarFormJsonAColumnas")
     .addItem("Convertir links de video a HYPERLINK",         "convertirVideosAHyperlink")
-    .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos");
+    .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
+    .addItem("Normalizar estados Cancelado + color rojo",    "normalizarEstadosCancelados");
 
   ui.createMenu("Medellin Concierge")
     .addItem("Sincronizar Airbnb",                           "sincronizarCalendarios")
