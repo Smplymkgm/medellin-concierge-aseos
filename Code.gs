@@ -49,14 +49,6 @@ function formatearFecha(fecha) {
   return Utilities.formatDate(fecha, "America/Bogota", "dd/MM/yyyy");
 }
 
-function getMesAnio(fechaStr) {
-  var p = String(fechaStr).split("/");
-  if (p.length !== 3) return "Sin fecha";
-  var mesIdx = parseInt(p[1]) - 1;
-  if (mesIdx < 0 || mesIdx > 11) return "Sin fecha";
-  return CONFIG.meses[mesIdx] + " " + p[2];
-}
-
 function nombreDia(fecha) {
   return ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"][fecha.getDay()];
 }
@@ -103,7 +95,6 @@ function doPost(e) {
     if (action === "getUploadUrl")        return handleGetUploadUrl(body);
     if (action === "registrarVideo")      return handleRegistrarVideo(body);
     if (action === "agregarAseo")         return handleAgregarAseo(body);
-    if (action === "getFormRespuestas")   return handleGetFormRespuestas(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
 
@@ -1415,34 +1406,6 @@ function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
 // FORMULARIO — respuestas del Google Form
 // ============================================================
 
-function handleGetFormRespuestas(body) {
-  var SHEET_ID = "1Ol1gUq3lVVptZYdhjhSM0u08L99rQxeIB8mpO2Tzr2I";
-  try {
-    var ss   = SpreadsheetApp.openById(SHEET_ID);
-    var hoja = ss.getSheets()[0];
-    if (!hoja || hoja.getLastRow() < 2) return respond(true, { headers: [], rows: [] });
-
-    var lastCol = hoja.getLastColumn();
-    var lastRow = hoja.getLastRow();
-    var headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-    var datos   = hoja.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
-
-    var rows = [];
-    for (var i = 0; i < datos.length; i++) {
-      var row = [];
-      for (var j = 0; j < lastCol; j++) {
-        row.push(String(datos[i][j] || ""));
-      }
-      rows.push(row);
-    }
-
-    rows.reverse();
-    return respond(true, { headers: headers, rows: rows });
-  } catch(err) {
-    return respond(false, null, "No se pudo leer el formulario: " + err.message);
-  }
-}
-
 // ============================================================
 // AUTO-COMPLETAR ASEOS PASADOS (trigger 10PM)
 // ============================================================
@@ -2382,30 +2345,6 @@ function convertirVideosAHyperlink() {
 // ============================================================
 // Devuelve el contenido de la hoja "Videos Aseos" + el folderId de la
 // carpeta raíz de Drive donde se suben los videos.
-
-function handleListarVideos(body) {
-  var ss = getSS();
-  var hoja = ss.getSheetByName(CONFIG.hojaVideos);
-  var rows = [];
-  if (hoja && hoja.getLastRow() >= 2) {
-    var datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getDisplayValues();
-    rows = datos.map(function(r) {
-      return {
-        codigo: r[0], propiedad: r[1], aseadora: r[2],
-        checkout: r[3], link: r[4], notas: r[5], registrado: r[6],
-      };
-    });
-  }
-  var carpetaRaiz = null;
-  try {
-    var folders = DriveApp.getFoldersByName(CONFIG.carpetaRaiz);
-    if (folders.hasNext()) {
-      var f = folders.next();
-      carpetaRaiz = { id: f.getId(), url: 'https://drive.google.com/drive/folders/' + f.getId(), nombre: f.getName() };
-    }
-  } catch(e) {}
-  return respond(true, { videos: rows, carpetaRaiz: carpetaRaiz, total: rows.length });
-}
 
 // ============================================================
 // SELF-TEST — diagnóstico end-to-end. Correr desde menú o vía
