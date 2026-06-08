@@ -146,6 +146,10 @@ function transformPersonal(apiPersonal) {
       rol:     p.rol || 'aseadora',
       tel:     p.tel || '',
       email:   p.email || '',
+      cedula:       p.cedula || '',
+      banco:        p.banco || '',
+      tipoCuenta:   p.tipoCuenta || '',
+      numeroCuenta: p.numeroCuenta || '',
     };
   });
 }
@@ -561,7 +565,8 @@ function App() {
   function openEditCleaner(persona) { setEditCleaner(persona); setEditCleanerOpen(true); }
   function doSaveCleaner(persona, cambios) {
     const next = personal.map(p => p.nombre === persona.nombre
-      ? { ...p, pin: cambios.pin || p.pin, tel: cambios.tel, email: cambios.email }
+      ? { ...p, pin: cambios.pin || p.pin, tel: cambios.tel, email: cambios.email,
+          cedula: cambios.cedula, banco: cambios.banco, tipoCuenta: cambios.tipoCuenta, numeroCuenta: cambios.numeroCuenta }
       : p);
     setLivePersonal(next); setPersonal(next);
     setEditCleanerOpen(false);
@@ -574,6 +579,10 @@ function App() {
         pin:      cambios.pin || persona.pin,
         telefono: cambios.tel,
         email:    cambios.email,
+        cedula:       cambios.cedula,
+        banco:        cambios.banco,
+        tipoCuenta:   cambios.tipoCuenta,
+        numeroCuenta: cambios.numeroCuenta,
       }
     }).then(res => {
       if (res && res.ok) showToast('Datos guardados');

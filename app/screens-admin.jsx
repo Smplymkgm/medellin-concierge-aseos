@@ -333,6 +333,7 @@ function HistorialAdminScreen({ ctx }) {
   });
   const [aseadora, setAseadora] = useStateA(null);
   const [propId, setPropId]     = useStateA(null);
+  const [cuentaOpen, setCuentaOpen] = useStateA(false);
 
   const cleaners = ctx.personal.filter(p => p.rol === 'aseadora').map(p => p.nombre);
   const propsList = ctx.props;
@@ -389,6 +390,11 @@ function HistorialAdminScreen({ ctx }) {
           <div className="label ter" style={{ textTransform: 'capitalize' }}>{periodLabel(period)}</div>
           <div className="h1" style={{ marginTop: 4 }}>{fmtCOP(totalGlobal)}</div>
           <div className="caption">{list.length} aseos · total a pagar</div>
+          <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
+            disabled={!aseadora || list.length === 0}
+            onClick={() => setCuentaOpen(true)}>
+            <Icon name="check" size={16} /> {aseadora ? ('Cuenta de cobro · ' + aseadora) : 'Elige una aseadora para la cuenta de cobro'}
+          </button>
           {Object.keys(totales).length > 1 && (
             <div style={{ marginTop: 10, borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
               {Object.entries(totales).sort((a,b) => b[1].total - a[1].total).map(([n, t]) => (
@@ -413,8 +419,115 @@ function HistorialAdminScreen({ ctx }) {
         ))}
         <div style={{ height: 80 }}></div>
       </div>
+
+      {cuentaOpen && aseadora && (
+        <CuentaCobro
+          persona={ctx.personal.find(p => p.nombre === aseadora) || { nombre: aseadora }}
+          lista={list}
+          period={period}
+          onClose={() => setCuentaOpen(false)} />
+      )}
     </div>
   );
 }
 
-Object.assign(window, { AseosScreen, PropiedadesScreen, PropiedadDetail, PersonalScreen, HistorialAdminScreen });
+/* ============================================================
+   Cuenta de cobro (PDF vía imprimir) — por aseadora y período
+   ============================================================ */
+const NIT_EMPRESA = '901564260-7';
+const EMPRESA = 'Medellín Concierge';
+
+function ddmmyyyy(d) {
+  if (!d) return '';
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+function CuentaCobro({ persona, lista, period, onClose }) {
+  // Rango del período
+  let desde, hasta;
+  if (period.mode === 'range' && period.from && period.to) {
+    desde = new Date(period.from + 'T00:00:00');
+    hasta = new Date(period.to + 'T00:00:00');
+  } else {
+    desde = new Date(period.year, period.month, 1);
+    hasta = new Date(period.year, period.month + 1, 0);
+  }
+
+  const filas = [...lista].sort((a, b) => a.checkout - b.checkout).map(a => aseoEnriched(a));
+  const total = filas.reduce((s, a) => s + (a.precio || 0), 0);
+  const esManual = (cod) => String(cod || '').indexOf('MAN') === 0;
+
+  return (
+    <div className="cuenta-overlay">
+      <div className="cuenta-toolbar no-print">
+        <button className="btn btn-ghost" onClick={onClose}><Icon name="x" size={18} /> Cerrar</button>
+        <button className="btn btn-primary" onClick={() => window.print()}><Icon name="check" size={18} /> Imprimir / Guardar PDF</button>
+      </div>
+
+      <div className="cuenta-doc">
+        <h1 className="cc-title">CUENTA DE COBRO — SERVICIOS DE ASEO</h1>
+        <p className="cc-line">Fecha: {ddmmyyyy(new Date())}</p>
+        <p className="cc-line">Nombre del prestador(a): <strong>{persona.nombre}</strong></p>
+        <p className="cc-line">Documento de identidad: {persona.cedula || '________________'}</p>
+        <p className="cc-line">Teléfono: {persona.tel || '________________'}</p>
+        <p className="cc-line">A quién se factura: {EMPRESA} — NIT: {NIT_EMPRESA}</p>
+
+        <h2 className="cc-h2">Concepto del servicio</h2>
+        <p className="cc-line">
+          Por medio de la presente, yo, <strong>{persona.nombre}</strong>, certifico que presté servicios de aseo
+          de manera independiente durante el período comprendido entre el <strong>{ddmmyyyy(desde)}</strong> y
+          el <strong>{ddmmyyyy(hasta)}</strong>, correspondientes a los servicios registrados a continuación.
+        </p>
+
+        <h2 className="cc-h2">Detalle de aseos realizados</h2>
+        <table className="cc-table">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Propiedad</th>
+              <th>Fecha de aseo</th>
+              <th>Notas</th>
+              <th className="cc-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((a, i) => (
+              <tr key={a.codigo || i}>
+                <td>{esManual(a.codigo) ? 'Aseo asignado' : a.codigo}</td>
+                <td>{a.propNombre}</td>
+                <td>{ddmmyyyy(a.checkout)}</td>
+                <td>{a.notas || '—'}</td>
+                <td className="cc-right">{fmtCOP(a.precio || 0)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="4"><strong>Número de aseos realizados: {filas.length}</strong></td>
+              <td className="cc-right"><strong>{fmtCOP(total)}</strong></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p className="cc-total">Total a pagar: <strong>{fmtCOP(total)}</strong></p>
+
+        <h2 className="cc-h2">Declaración</h2>
+        <ul className="cc-list">
+          <li>Este pago corresponde exclusivamente a servicios prestados de manera independiente.</li>
+          <li>El pago se realiza únicamente sobre los servicios efectivamente registrados.</li>
+        </ul>
+
+        <h2 className="cc-h2">Datos para pago</h2>
+        <p className="cc-line">Banco: {persona.banco || '________________'}</p>
+        <p className="cc-line">Tipo de cuenta: {persona.tipoCuenta || '________________'}</p>
+        <p className="cc-line">Número de cuenta: {persona.numeroCuenta || '________________'}</p>
+        <p className="cc-line">Titular: {persona.nombre}</p>
+
+        <p className="cc-firma">Firma: ____________________________</p>
+        <p className="cc-foot">NO SE DESCUENTAN COSTOS Y GASTOS DE LA DECLARACIÓN DE RENTA</p>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { AseosScreen, PropiedadesScreen, PropiedadDetail, PersonalScreen, HistorialAdminScreen, CuentaCobro });

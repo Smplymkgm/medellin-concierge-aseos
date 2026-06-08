@@ -106,7 +106,7 @@ function doPost(e) {
     if (action === 'getDatos') {
       var n2 = body.nombre || '';
       var r2 = body.rol || 'aseadora';
-      var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'' }; });
+      var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'', cedula: u.cedula||'', banco: u.banco||'', tipoCuenta: u.tipoCuenta||'', numeroCuenta: u.numeroCuenta||'' }; });
       var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null, icalUrls: p.icalUrls || [], empleadaAuto: p.empleadaAuto || '' }; });
       var a2 = r2==='admin' ? getAllAseos() : getAseosPorAseadora(n2);
       return respond(true, { personal: p2, propiedades: pr2, aseos: a2 });
@@ -157,7 +157,9 @@ function getPersonal() {
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  // Cols A-G base + H-K facturación (cédula, banco, tipo cuenta, # cuenta)
+  var lastCol = Math.max(hoja.getLastColumn(), 11);
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
   var result = [];
   for (var i = 0; i < datos.length; i++) {
     var r = datos[i];
@@ -171,6 +173,10 @@ function getPersonal() {
       formulario: String(r[4] || "").trim(),
       carpeta:    String(r[5] || "").trim(),
       telefono:   String(r[6] || "").trim(),
+      cedula:      String(r[7]  || "").trim(),
+      banco:       String(r[8]  || "").trim(),
+      tipoCuenta:  String(r[9]  || "").trim(),
+      numeroCuenta:String(r[10] || "").trim(),
     });
   }
   return result;
@@ -1144,6 +1150,13 @@ function handleActualizarPersonal(body) {
   var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
+  // Asegurar encabezados de facturación (cols H-K) una sola vez
+  if (hoja.getLastColumn() < 11) {
+    hoja.getRange(1, 8, 1, 4)
+      .setValues([["Cédula", "Banco", "Tipo Cuenta", "Número Cuenta"]])
+      .setBackground("#1a1a2e").setFontColor("#ffffff").setFontWeight("bold");
+  }
+
   var existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
   for (var i = 0; i < existentes.length; i++) {
     if (String(existentes[i][1]).trim().toLowerCase() !== nombre.toLowerCase()) continue;
@@ -1153,6 +1166,11 @@ function handleActualizarPersonal(body) {
     if (datos.carpeta   !== undefined) hoja.getRange(fila, 6).setValue(datos.carpeta);
     if (datos.telefono  !== undefined) hoja.getRange(fila, 7).setValue(datos.telefono);
     if (datos.formulario !== undefined) hoja.getRange(fila, 5).setValue(datos.formulario);
+    // Datos de facturación (cuenta de cobro)
+    if (datos.cedula       !== undefined) hoja.getRange(fila, 8).setValue(String(datos.cedula)).setNumberFormat("@");
+    if (datos.banco        !== undefined) hoja.getRange(fila, 9).setValue(datos.banco);
+    if (datos.tipoCuenta   !== undefined) hoja.getRange(fila, 10).setValue(datos.tipoCuenta);
+    if (datos.numeroCuenta !== undefined) hoja.getRange(fila, 11).setValue(String(datos.numeroCuenta)).setNumberFormat("@");
     return respond(true, null);
   }
   return respond(false, null, "Empleada no encontrada: " + nombre);
