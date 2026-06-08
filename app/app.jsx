@@ -68,7 +68,25 @@ function parseDateStr(s) {
 /* Transform API aseos → frontend format */
 function transformAseos(apiAseos) {
   var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  return (apiAseos || []).map(function(a) {
+  // Dedup defensivo: una propiedad solo tiene un aseo por checkout.
+  // Conserva la versión más completa (completado > con form > asignada).
+  var dedup = {};
+  function score(a) {
+    var s = 0;
+    if (a.estado === 'Completado') s += 100;
+    if (a.formFilled)              s += 10;
+    if (String(a.codigo || '').indexOf('MAN') === 0) s += 5;
+    if (a.asignada)                s += 1;
+    s += (Number(a.precio) || 0) / 1e9; // desempate: gana mayor precio
+    return s;
+  }
+  (apiAseos || []).forEach(function(a) {
+    if (String(a.estado || '') === 'Cancelado') return;
+    // Identidad del aseo: propiedad + día de salida (checkout)
+    var key = (a.idProp || a.propiedad || '') + '|' + a.checkout;
+    if (dedup[key] === undefined || score(a) >= score(dedup[key])) dedup[key] = a;
+  });
+  return Object.keys(dedup).map(function(k) { return dedup[k]; }).map(function(a) {
     var checkout = parseDateStr(a.checkout);
     var checkin  = parseDateStr(a.checkin);
     checkout.setHours(0, 0, 0, 0);
@@ -112,6 +130,8 @@ function transformProps(apiProps) {
       precio:   p.precio || 0,
       claves:   { acceso: p.acceso || '' },
       accesoEstructurado: struct,
+      icalUrls: p.icalUrls || (p.icalUrl ? [p.icalUrl] : []),
+      empleadaAuto: p.empleadaAuto || '',
     };
   });
 }
@@ -450,19 +470,42 @@ function App() {
   }
   function openAddProp() { setEditProp(null); setEditPropOpen(true); }
   function doSaveProp(oldId, datos) {
+    const icalUrls = datos.icalUrls || [];
     if (oldId == null) {
-      // Alta (no implementada en backend desde la app). Mantener local.
+      // Alta — optimista local + persistir en backend
+      const prev = props;
       const nuevo = {
         id: datos.id, nombre: datos.nombre, barrio: '', direccion: datos.direccion,
         precio: datos.precio,
         claves: { acceso: datos.acceso || '' },
         accesoEstructurado: datos.accesoEstructurado || null,
-        ical: datos.ical
+        icalUrls: icalUrls,
       };
       const next = [...props, nuevo];
       setLiveProps(next); setProps(next);
       setEditPropOpen(false);
-      showToast('Propiedad creada · ' + datos.id);
+      showToast('Creando propiedad…');
+      gasPost({
+        action: 'agregarPropiedad',
+        datos: {
+          nombre: datos.nombre,
+          precioAseo: datos.precio,
+          acceso: datos.acceso,
+          accesoEstructurado: datos.accesoEstructurado,
+          icalUrls: icalUrls,
+        },
+      }).then(res => {
+        if (res && res.ok) {
+          showToast('Propiedad creada · ' + (res.data && res.data.id || datos.id));
+          loadDataFor(session.nombre, session.rol);
+        } else {
+          setLiveProps(prev); setProps(prev);
+          showToast('Error creando: ' + ((res && res.error) || 'sin conexión'));
+        }
+      }).catch(() => {
+        setLiveProps(prev); setProps(prev);
+        showToast('Error de conexión, no se creó');
+      });
       return;
     }
 
@@ -476,6 +519,7 @@ function App() {
           precio: datos.precio,
           claves: { ...p.claves, acceso: datos.acceso },
           accesoEstructurado: datos.accesoEstructurado || null,
+          icalUrls: icalUrls,
         }
       : p);
     setLiveProps(next);
@@ -492,7 +536,7 @@ function App() {
         precioAseo: datos.precio,
         acceso: datos.acceso,
         accesoEstructurado: datos.accesoEstructurado,
-        icalUrl: datos.ical,
+        icalUrls: icalUrls,
       },
     }).then(res => {
       if (res && res.ok) showToast('Propiedad actualizada');
@@ -684,13 +728,20 @@ function App() {
         <BottomNav tabs={isAdmin ? adminTabs : cleanerTabs} active={tab}
           onChange={(t) => { setTab(t); setPropId(null); setOpenId(null); }} />
 
+        {/* Las aseadoras solo pueden completar sus aseos. El resto de hojas
+            (reasignar, mover fecha, agregar aseo/propiedad/aseadora) son
+            exclusivas de admin y ni siquiera se montan para aseadoras. */}
         <CompletarSheet open={completarOpen} aseo={completar} onClose={() => setCompletarOpen(false)} onDone={doneCompletar} />
-        <ReassignSheet open={reassignOpen} aseo={reassign} onClose={() => setReassignOpen(false)} onAssign={doAssign} />
-        <MoverFechaSheet open={moverFechaOpen} aseo={moverFecha} onClose={() => setMoverFechaOpen(false)} onSave={doMoverFecha} />
-        <AgregarAseoSheet open={agregarOpen} onClose={() => setAgregarOpen(false)} onAdd={doAgregar} />
-        <EditarPropiedadSheet open={editPropOpen} prop={editProp} onClose={() => setEditPropOpen(false)} onSave={doSaveProp} />
-        <AgregarAseadoraSheet open={addCleanerOpen} onClose={() => setAddCleanerOpen(false)} onAdd={doAddCleaner} />
-        <EditarAseadoraSheet open={editCleanerOpen} persona={editCleaner} onClose={() => setEditCleanerOpen(false)} onSave={doSaveCleaner} />
+        {isAdmin && (
+          <React.Fragment>
+            <ReassignSheet open={reassignOpen} aseo={reassign} onClose={() => setReassignOpen(false)} onAssign={doAssign} />
+            <MoverFechaSheet open={moverFechaOpen} aseo={moverFecha} onClose={() => setMoverFechaOpen(false)} onSave={doMoverFecha} />
+            <AgregarAseoSheet open={agregarOpen} onClose={() => setAgregarOpen(false)} onAdd={doAgregar} />
+            <EditarPropiedadSheet open={editPropOpen} prop={editProp} onClose={() => setEditPropOpen(false)} onSave={doSaveProp} />
+            <AgregarAseadoraSheet open={addCleanerOpen} onClose={() => setAddCleanerOpen(false)} onAdd={doAddCleaner} />
+            <EditarAseadoraSheet open={editCleanerOpen} persona={editCleaner} onClose={() => setEditCleanerOpen(false)} onSave={doSaveCleaner} />
+          </React.Fragment>
+        )}
 
         {toast && <div className="toast">{toast}</div>}
       </div>
