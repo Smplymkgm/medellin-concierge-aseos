@@ -1700,7 +1700,8 @@ function crearTriggersAutomaticos() {
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
   ScriptApp.newTrigger("notificarAdminAsignacionesPendientes").timeBased().atHour(7).everyDays(1).create();
-  getSS().toast("Triggers creados (Airbnb 6h · Calendar 2h · Auto-completar 10PM · Admin pendientes 7AM)", "Triggers", 6);
+  ScriptApp.newTrigger("recuperarLinksVideos").timeBased().atHour(3).everyDays(1).create();
+  getSS().toast("Triggers creados (Airbnb 6h · Calendar 2h · Auto-completar 10PM · Admin pendientes 7AM · Video links 3AM)", "Triggers", 6);
 }
 
 
