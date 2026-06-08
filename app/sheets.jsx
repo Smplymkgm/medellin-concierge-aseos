@@ -485,12 +485,12 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       int_tipo: intn.tipo || '', int_valor: intn.valor || '',
       notas: struct.notas || '',
       acceso: (prop.claves && prop.claves.acceso) || '',
-      ical: prop.ical || '',
+      icals: (prop.icalUrls && prop.icalUrls.length) ? prop.icalUrls.slice() : [''],
     });
     else setForm({
       id: nextPropId(), nombre: '', direccion: '', precio: 50000,
       ext_tipo: '', ext_valor: '', int_tipo: '', int_valor: '', notas: '',
-      acceso: '', ical: '',
+      acceso: '', icals: [''],
     });
   }, [open, prop]);
 
@@ -514,7 +514,7 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       precio: precioNum,
       acceso: form.acceso.trim(),
       accesoEstructurado: accesoEstructurado,
-      ical: form.ical.trim(),
+      icalUrls: (form.icals || []).map(function(u){ return String(u || '').trim(); }).filter(Boolean),
     });
   }
 
@@ -593,10 +593,25 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       </div>
 
       <div className="divider"></div>
-      <div className="form-group">
-        <label className="label">URL iCal (Airbnb)</label>
-        <input className="text-input" value={form.ical} onChange={e => set('ical', e.target.value)} placeholder="https://airbnb.com/calendar/ical/…" />
-      </div>
+      <div className="section-title" style={{ marginBottom: 6 }}><Icon name="calendar" size={16} /><span className="h3">Calendarios iCal</span></div>
+      <div className="caption" style={{ marginBottom: 12 }}>Agrega un iCal por plataforma (Airbnb, Booking, etc.). Las reservas se sincronizan de todos. Si la propiedad no tiene iCal, déjalo vacío y agrega las reservas manualmente.</div>
+      {(form.icals || []).map(function(u, idx) {
+        return (
+          <div className="row gap-base" key={idx} style={{ alignItems: 'center', marginBottom: 8 }}>
+            <input className="text-input" style={{ flex: 1 }} value={u}
+              onChange={e => setForm(f => { const c = (f.icals || []).slice(); c[idx] = e.target.value; return { ...f, icals: c }; })}
+              placeholder="https://…/calendar/ical/…" />
+            <button className="btn btn-ghost" type="button" aria-label="Quitar"
+              onClick={() => setForm(f => { const c = (f.icals || []).filter((_, i) => i !== idx); return { ...f, icals: c.length ? c : [''] }; })}>
+              <Icon name="x" size={18} />
+            </button>
+          </div>
+        );
+      })}
+      <button className="btn btn-ghost" type="button" style={{ marginTop: 4 }}
+        onClick={() => setForm(f => ({ ...f, icals: [...(f.icals || []), ''] }))}>
+        <Icon name="plus" size={16} /> Agregar otro iCal
+      </button>
 
       <div className="form-group" style={{ marginBottom: 0 }}>
         <label className="label">Acceso (texto libre, legacy)</label>

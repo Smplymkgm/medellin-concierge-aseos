@@ -116,7 +116,7 @@ function doPost(e) {
       var n2 = body.nombre || '';
       var r2 = body.rol || 'aseadora';
       var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'' }; });
-      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null }; });
+      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null, icalUrls: p.icalUrls || [], empleadaAuto: p.empleadaAuto || '' }; });
       var a2 = r2==='admin' ? getAllAseos() : getAseosPorAseadora(n2);
       return respond(true, { personal: p2, propiedades: pr2, aseos: a2 });
     }
@@ -949,7 +949,11 @@ function getPropiedades() {
     var r = datos[i];
     var id  = String(r[0]).trim();
     var nom = String(r[1]).trim();
-    var url = String(r[4] || "").trim();
+    var urlRaw = String(r[4] || "").trim();
+    // Col E puede tener varios iCal separados por salto de línea, coma o ";"
+    var urls = urlRaw.split(/[\n,;]+/).map(function(u){ return u.trim(); })
+                     .filter(function(u){ return u.length > 0; });
+    var url = urls[0] || "";
     if (!id || !nom) continue;
     // Col I (índice 8) = Activa (boolean). Vacío/TRUE = activa.
     // FALSE = archivada → no se devuelve.
@@ -967,6 +971,7 @@ function getPropiedades() {
       precioAseo:          Number(r[2]) || 0,
       acceso:              String(r[3] || "").trim(),
       icalUrl:             url,
+      icalUrls:            urls,
       empleadaAuto:        String(r[5] || "").trim(),
       folderId:            String(r[6] || "").trim(),
       accesoEstructurado:  accesoStruct,
@@ -983,11 +988,16 @@ function handleAgregarPropiedad(body) {
   var datos = body.datos || {};
   var nombre    = String(datos.nombre    || "").trim();
   var acceso    = String(datos.acceso    || "").trim();
-  var icalUrl   = String(datos.icalUrl   || "").trim();
+  // iCal: array (varias plataformas) o string legacy. Opcional: propiedades
+  // de Booking u otras plataformas se manejan con reservas manuales.
+  var icalLista = datos.icalUrls !== undefined
+    ? (datos.icalUrls || []).map(function(u){ return String(u || "").trim(); }).filter(function(u){ return u.length > 0; })
+    : (String(datos.icalUrl || "").trim() ? [String(datos.icalUrl).trim()] : []);
+  var icalUrl   = icalLista.join("\n");
   var precioAseo = Number(datos.precioAseo) || 0;
   var empleadaAuto = String(datos.empleadaAuto || "").trim();
 
-  if (!nombre || !icalUrl) return respond(false, null, "Nombre e iCal URL requeridos");
+  if (!nombre) return respond(false, null, "Nombre requerido");
 
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
@@ -1080,7 +1090,14 @@ function handleActualizarPropiedad(body) {
     if (datos.nombre               !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
     if (datos.precioAseo           !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
     if (datos.acceso               !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
-    if (datos.icalUrl              !== undefined) hoja.getRange(fila, 5).setValue(datos.icalUrl);
+    // iCal: acepta icalUrls (array, varias plataformas) o icalUrl (string legacy)
+    if (datos.icalUrls             !== undefined) {
+      var lista = (datos.icalUrls || []).map(function(u){ return String(u || "").trim(); })
+                    .filter(function(u){ return u.length > 0; });
+      hoja.getRange(fila, 5).setValue(lista.join("\n"));
+    } else if (datos.icalUrl       !== undefined) {
+      hoja.getRange(fila, 5).setValue(datos.icalUrl);
+    }
     if (datos.empleadaAuto         !== undefined) hoja.getRange(fila, 6).setValue(datos.empleadaAuto);
     if (datos.accesoEstructurado   !== undefined) {
       var val = datos.accesoEstructurado;
@@ -1539,7 +1556,9 @@ function onOpen() {
     .addItem("Migrar form viejo (JSON → columnas)",          "migrarFormJsonAColumnas")
     .addItem("Convertir links de video a HYPERLINK",         "convertirVideosAHyperlink")
     .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
-    .addItem("Normalizar estados Cancelado + color rojo",    "normalizarEstadosCancelados");
+    .addItem("Normalizar estados Cancelado + color rojo",    "normalizarEstadosCancelados")
+    .addItem("Eliminar aseos duplicados",                    "eliminarAseosDuplicados")
+    .addItem("Actualizar precios de propiedades",            "actualizarPreciosPropiedades");
 
   ui.createMenu("Medellin Concierge")
     .addItem("Sincronizar Airbnb",                           "sincronizarCalendarios")
@@ -1777,14 +1796,20 @@ function getAllAseos() {
   var maxCol = Math.min(lastCol, 15);
   var datos = hoja.getRange(2, 1, lastRow - 1, maxCol).getValues();
   var disp  = hoja.getRange(2, 4, lastRow - 1, 2).getDisplayValues();
+  var seen   = {};
   var result = [];
   for (var i = 0; i < datos.length; i++) {
     var r = datos[i];
-    var cod = String(r[0]);
+    var cod = String(r[0]).trim();
     if (!cod) continue;
+    // Excluir cancelados — no tienen utilidad operativa en la app
+    var estado = String(r[7] || "").trim();
+    if (estado === "Cancelado") continue;
+    // Deduplicar por código. Si hay colisión, gana la fila "más completa":
+    // Completado > tiene formulario > Pendiente.
     var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
     var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
-    result.push({
+    var obj = {
       codigo:    cod,
       idProp:    String(r[1]).trim(),
       propiedad: String(r[2]).trim(),
@@ -1792,20 +1817,197 @@ function getAllAseos() {
       checkout:  disp[i][1] || fechaToStr(r[4]),
       noches:    Number(r[5]) || 0,
       asignada:  String(r[6] || ""),
-      estado:    String(r[7] || ""),
+      estado:    estado,
       precio:    Number(r[8]) || 0,
       notas:     String(r[9] || ""),
       acceso:    String(r[10] || ""),
       entrada:   entrada,
       salida:    salida,
       formFilled: !!(entrada || salida),
-    });
+    };
+    // Dedup por IDENTIDAD DEL ASEO = propiedad + día de salida (checkout).
+    // Una propiedad solo se asea una vez por día de checkout. Esto colapsa
+    // los duplicados aunque el iCal les haya dado códigos distintos (que es
+    // la causa real de la multiplicación). Gana la fila más completa:
+    // Completado > con formulario > manual > asignada.
+    var dedupKey = (obj.idProp || obj.propiedad) + "|" + obj.checkout;
+    if (seen[dedupKey] !== undefined) {
+      var prev = result[seen[dedupKey]];
+      if (_scoreAseo(obj) >= _scoreAseo(prev)) result[seen[dedupKey]] = obj;
+    } else {
+      seen[dedupKey] = result.length;
+      result.push(obj);
+    }
   }
   return result;
 }
 
+// Puntaje para decidir qué fila duplicada conservar (mayor = mejor)
+function _scoreAseo(a) {
+  var s = 0;
+  if (a.estado === "Completado") s += 100;
+  if (a.formFilled)              s += 10;
+  // Preferir reservas manuales (Booking/otras plataformas) sobre fantasmas iCal
+  if (String(a.codigo || "").indexOf("MAN") === 0) s += 5;
+  if (a.asignada)                s += 1;
+  // Desempate fino: a igualdad, gana el de mayor precio (el correcto del
+  // catálogo; los fantasmas suelen traer precios viejos/menores).
+  s += (Number(a.precio) || 0) / 1e9;
+  return s;
+}
+
 function getAseosPorAseadora(nombre) {
   return getAllAseos().filter(function(a) { return a.asignada === nombre; });
+}
+
+// ============================================================
+// ELIMINAR ASEOS DUPLICADOS de la hoja "Todos los Aseos"
+// Borra duplicados verdaderos: misma propiedad + mismo día de salida
+// (checkout). Una propiedad solo se asea una vez por día de checkout, así
+// que filas con esa misma identidad son el mismo aseo multiplicado por
+// códigos iCal inestables. Conserva la fila más completa:
+// Completado > con formulario > manual (Booking) > asignada.
+// One-shot, seguro.
+// ============================================================
+
+function eliminarAseosDuplicados() {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  var ui   = SpreadsheetApp.getUi();
+  if (!hoja || hoja.getLastRow() < 2) {
+    ui.alert("Hoja Aseos vacía.");
+    return;
+  }
+
+  var lastRow = hoja.getLastRow();
+  var lastCol = hoja.getLastColumn();
+  var maxCol  = Math.min(lastCol, 15);
+  var datos   = hoja.getRange(2, 1, lastRow - 1, maxCol).getValues();
+  var disp    = hoja.getRange(2, 4, lastRow - 1, 2).getDisplayValues(); // checkin/checkout
+
+  // Clave de duplicado: propiedad + día de salida (checkout).
+  var mejorPorKey = {};   // key -> { fila, score }
+  var aBorrar     = {};   // fila -> true (set, evita borrar dos veces)
+
+  function score(r) {
+    var s = 0;
+    if (String(r[7] || "").trim() === "Completado") s += 100;
+    var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
+    var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
+    if (entrada || salida) s += 10;
+    if (String(r[0] || "").trim().indexOf("MAN") === 0) s += 5; // manual (Booking)
+    if (String(r[6] || "").trim()) s += 1;
+    s += (Number(r[8]) || 0) / 1e9; // desempate: gana mayor precio
+    return s;
+  }
+
+  function procesar(key, fila, sc) {
+    if (mejorPorKey[key] === undefined) {
+      mejorPorKey[key] = { fila: fila, score: sc };
+    } else {
+      // Hay duplicado: conservar el de mayor score, marcar el otro para borrar
+      if (sc > mejorPorKey[key].score) {
+        aBorrar[mejorPorKey[key].fila] = true;
+        mejorPorKey[key] = { fila: fila, score: sc };
+      } else {
+        aBorrar[fila] = true;
+      }
+    }
+  }
+
+  for (var i = 0; i < datos.length; i++) {
+    var r   = datos[i];
+    var cod = String(r[0]).trim();
+    var fila = i + 2;
+    if (!cod) continue;
+    var idProp    = String(r[1] || "").trim();
+    var propiedad = String(r[2] || "").trim();
+    var checkout  = disp[i][1] || fechaToStr(r[4]);
+    var sc  = score(r);
+    // Identidad del aseo: propiedad + día de salida (checkout)
+    procesar((idProp || propiedad) + "|" + checkout, fila, sc);
+  }
+
+  var filas = Object.keys(aBorrar).map(Number);
+  if (filas.length === 0) {
+    ui.alert("✅ No se encontraron aseos duplicados.");
+    return;
+  }
+
+  // Borrar de abajo hacia arriba para no desplazar índices
+  filas.sort(function(a, b) { return b - a; });
+  for (var k = 0; k < filas.length; k++) {
+    hoja.deleteRow(filas[k]);
+  }
+
+  ui.alert("✅ " + filas.length + " fila(s) duplicada(s) eliminada(s).\n\n" +
+           "Se conservó la versión más completa de cada aseo (completado / con formulario).");
+}
+
+// ============================================================
+// ACTUALIZAR PRECIOS DE PROPIEDADES (one-shot idempotente)
+// ============================================================
+
+function actualizarPreciosPropiedades() {
+  var PRECIOS = {
+    "#0001": 90000,
+    "#0002": 130000,
+    "#0010": 90000,
+    "#0065": 80000,
+    "#0066": 90000,
+    "#0078": 90000,
+    "#0082": 120000,
+    "#0083": 90000,
+    "#0084": 90000,
+    "#0085": 70000,
+    "#0086": 90000,
+    "#0087": 100000,
+    "#0088": 60000,
+    "#0089": 150000,
+    "#0091": 70000,
+    "#0092": 90000,
+    "#0093": 60000,
+    "#0094": 60000,
+    "#0095": 60000,
+    "#0096": 50000,
+    "#0097": 50000,
+    "#0101": 120000,
+    "#0104": 90000,
+    "#0106": 100000,
+  };
+
+  var ss    = getSS();
+  var hoja  = ss.getSheetByName(CONFIG.hojaPropiedades);
+  if (!hoja || hoja.getLastRow() < 2) {
+    SpreadsheetApp.getUi().alert("No se encontró la hoja Propiedades.");
+    return;
+  }
+
+  var lastRow = hoja.getLastRow();
+  var ids     = hoja.getRange(2, 1, lastRow - 1, 1).getValues();   // col A = ID
+  var precios = hoja.getRange(2, 3, lastRow - 1, 1).getValues();   // col C = Precio Aseo
+
+  var actualizados = 0;
+  var noEncontrados = [];
+
+  for (var i = 0; i < ids.length; i++) {
+    var id = String(ids[i][0]).trim();
+    if (!id) continue;
+    if (PRECIOS[id] !== undefined) {
+      if (Number(precios[i][0]) !== PRECIOS[id]) {
+        hoja.getRange(i + 2, 3).setValue(PRECIOS[id]);
+        actualizados++;
+      }
+    } else {
+      noEncontrados.push(id);
+    }
+  }
+
+  var msg = "✅ " + actualizados + " precio(s) actualizado(s).";
+  if (noEncontrados.length > 0) {
+    msg += "\n\n⚠️ Estas propiedades no tienen precio asignado en la lista:\n" + noEncontrados.join(", ");
+  }
+  SpreadsheetApp.getUi().alert(msg);
 }
 
 // ============================================================

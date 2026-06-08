@@ -151,14 +151,32 @@ function sincronizarCalendarios() {
 // ============================================================
 
 function obtenerReservasDeICal(prop) {
-  try {
-    var r = UrlFetchApp.fetch(prop.icalUrl, { muteHttpExceptions: true });
-    if (r.getResponseCode() !== 200) return [];
-    return parsearICal(r.getContentText(), prop);
-  } catch(e) {
-    Logger.log("Error iCal " + prop.nombre + ": " + e.message);
-    return [];
+  // Soporta múltiples iCal por propiedad (Airbnb + Booking + otros).
+  var urls = (prop.icalUrls && prop.icalUrls.length) ? prop.icalUrls
+           : (prop.icalUrl ? [prop.icalUrl] : []);
+  var todas = [];
+  var vistos = {};  // dedup por código entre feeds de la misma propiedad
+  for (var u = 0; u < urls.length; u++) {
+    var url = String(urls[u] || "").trim();
+    if (!url) continue;
+    try {
+      var r = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      if (r.getResponseCode() !== 200) {
+        Logger.log("iCal " + prop.nombre + " HTTP " + r.getResponseCode() + ": " + url);
+        continue;
+      }
+      var reservas = parsearICal(r.getContentText(), prop);
+      for (var k = 0; k < reservas.length; k++) {
+        var cod = reservas[k].codigo;
+        if (vistos[cod]) continue;  // mismo código en dos feeds → una sola vez
+        vistos[cod] = true;
+        todas.push(reservas[k]);
+      }
+    } catch(e) {
+      Logger.log("Error iCal " + prop.nombre + " (" + url + "): " + e.message);
+    }
   }
+  return todas;
 }
 
 function parsearICal(texto, prop) {
@@ -322,16 +340,21 @@ function sincronizarHojaAseos() {
       hoja.hideColumns(12);
     }
 
-    // Index aseos existentes
+    // Index aseos existentes (por código y por identidad propiedad+checkout)
     var existentes = {};
     var existRows  = [];
+    var existeStay = {};   // (idProp|propiedad)+"|"+checkout -> true
     if (hoja.getLastRow() > 1) {
       var exDatos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+      var exDisp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
       for (var i = 0; i < exDatos.length; i++) {
         var cod = String(exDatos[i][0]);
         if (cod) {
           existentes[cod] = { row: i+2, estado: String(exDatos[i][7]), data: exDatos[i] };
           existRows.push(i + 2);
+          var pKey = (String(exDatos[i][1]||"").trim() || String(exDatos[i][2]||"").trim());
+          var coKey = exDisp[i][1] || fechaToStr(exDatos[i][4]);
+          existeStay[pKey + "|" + coKey] = true;
         }
       }
     }
@@ -339,6 +362,13 @@ function sincronizarHojaAseos() {
     var mDatos = master.getRange(2, 1, master.getLastRow()-1, 13).getValues();
     var mDisp  = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
     var nuevas = [];
+
+    // Set de códigos vigentes en el master (para reconciliar huérfanos)
+    var codigosMaster = {};
+    for (var m = 0; m < mDatos.length; m++) {
+      var cm = String(mDatos[m][0]).trim();
+      if (cm) codigosMaster[cm] = true;
+    }
 
     // Recolectar updates en batches por fila (filas adyacentes podrían
     // beneficiarse de range mas grande, pero por ahora hacemos un setValues
@@ -388,6 +418,12 @@ function sincronizarHojaAseos() {
           ts: ts,
         });
       } else {
+        // Prevención de duplicados: si ya existe un aseo para esta propiedad
+        // y este día de checkout (aunque con otro código), NO crear otra fila.
+        // El código del iCal puede cambiar entre syncs y multiplicaría el aseo.
+        var stayKey = (String(r[1]||"").trim() || String(r[2]||"").trim()) + "|" + checkoutStr;
+        if (existeStay[stayKey]) continue;
+        existeStay[stayKey] = true;
         var estado = estadoMaster === "Cancelada"  ? "Cancelado"  :
                      estadoMaster === "Finalizado" ? "Completado" : "Pendiente";
         var tsNew = estado === "Completado" ?
@@ -405,6 +441,20 @@ function sincronizarHojaAseos() {
       hoja.getRange(up.fila, 3, 1, 9).setValues([up.valores]);
       hoja.getRange(up.fila, 1, 1, 13).setBackground(up.bg);
       if (up.ts) hoja.getRange(up.fila, 13).setValue(up.ts);
+    }
+
+    // RECONCILIACIÓN: aseos en la hoja cuyo código YA NO está en el master
+    // (la reserva desapareció del iCal). Si están Pendiente y no son manuales
+    // ni completados, se marcan Cancelado para que no aparezcan en la app.
+    // Esto evita la acumulación de duplicados cuando un código cambia.
+    for (var cod in existentes) {
+      if (codigosMaster[cod]) continue;                 // sigue vigente
+      if (cod.indexOf("MAN") === 0) continue;           // aseo manual → respetar
+      var ex = existentes[cod];
+      var est = String(ex.estado || "").trim();
+      if (est === "Completado" || est === "Cancelado") continue; // no degradar
+      hoja.getRange(ex.row, 8).setValue("Cancelado");
+      hoja.getRange(ex.row, 1, 1, 13).setBackground("#fff3f3");
     }
 
     if (nuevas.length > 0) {
