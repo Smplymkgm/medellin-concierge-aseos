@@ -457,30 +457,47 @@ function CuentaCobro({ persona, lista, period, onClose }) {
   const total = filas.reduce((s, a) => s + (a.precio || 0), 0);
   const esManual = (cod) => String(cod || '').indexOf('MAN') === 0;
 
-  // Imprime en una ventana nueva y limpia (sin el CSS del marco de la app,
-  // que rompía el layout al imprimir directamente).
+  // Imprime usando un iframe oculto con estilos propios (sin el CSS del
+  // marco de la app, que rompía el layout). La tabla usa ancho fijo y
+  // envuelve el texto para que NO se corte ni se salga de la página.
   function imprimirCuenta() {
     const node = document.querySelector('.cuenta-doc');
     if (!node) return;
     const css =
-      "*{box-sizing:border-box;} body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a1a;font-size:13px;line-height:1.5;margin:0;padding:24px;}" +
-      ".cc-title{font-size:18px;font-weight:700;text-align:center;margin:0 0 18px;}" +
-      ".cc-h2{font-size:14px;font-weight:700;margin:18px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;}" +
-      ".cc-line{margin:3px 0;} .cc-total{font-size:15px;margin:14px 0;text-align:right;}" +
-      ".cc-list{margin:4px 0 4px 18px;} .cc-firma{margin-top:36px;} .cc-foot{margin-top:10px;font-size:11px;color:#555;text-align:center;}" +
-      ".cc-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px;}" +
-      ".cc-table th,.cc-table td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top;}" +
-      ".cc-table th{background:#f0ede9;font-weight:700;} .cc-table .cc-right{text-align:right;white-space:nowrap;}" +
-      ".cc-table tfoot td{background:#faf8f5;} .cc-table tr{page-break-inside:avoid;}" +
-      "@page{margin:16mm;}";
-    const win = window.open('', '_blank', 'width=820,height=1000');
-    if (!win) { alert('Permite ventanas emergentes para poder imprimir/guardar el PDF.'); return; }
-    win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Cuenta de cobro - ' +
+      "*{box-sizing:border-box;} html,body{margin:0;padding:0;}" +
+      "body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a1a;font-size:12px;line-height:1.45;}" +
+      ".cuenta-doc{margin:0;max-width:100%;box-shadow:none;padding:0;}" +
+      ".cc-title{font-size:17px;font-weight:700;text-align:center;margin:0 0 16px;}" +
+      ".cc-h2{font-size:13px;font-weight:700;margin:16px 0 6px;border-bottom:1px solid #ddd;padding-bottom:4px;}" +
+      ".cc-line{margin:3px 0;} .cc-total{font-size:14px;margin:12px 0;text-align:right;}" +
+      ".cc-list{margin:4px 0 4px 18px;} .cc-firma{margin-top:32px;} .cc-foot{margin-top:10px;font-size:10px;color:#555;text-align:center;}" +
+      ".cc-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:10.5px;table-layout:fixed;}" +
+      ".cc-table th,.cc-table td{border:1px solid #ccc;padding:4px 5px;text-align:left;vertical-align:top;word-wrap:break-word;overflow-wrap:anywhere;}" +
+      ".cc-table th{background:#f0ede9;font-weight:700;}" +
+      ".cc-table th:nth-child(1),.cc-table td:nth-child(1){width:10%;}" +
+      ".cc-table th:nth-child(2),.cc-table td:nth-child(2){width:16%;}" +
+      ".cc-table th:nth-child(3),.cc-table td:nth-child(3){width:23%;}" +
+      ".cc-table th:nth-child(4),.cc-table td:nth-child(4){width:13%;}" +
+      ".cc-table th:nth-child(5),.cc-table td:nth-child(5){width:27%;}" +
+      ".cc-table th:nth-child(6),.cc-table td:nth-child(6){width:11%;}" +
+      ".cc-table .cc-right{text-align:right;} .cc-table tfoot td{background:#faf8f5;}" +
+      "tr{page-break-inside:avoid;} @page{size:A4;margin:14mm;}";
+    var prev = document.getElementById('cc-print-frame');
+    if (prev) prev.remove();
+    var f = document.createElement('iframe');
+    f.id = 'cc-print-frame';
+    f.style.position = 'fixed'; f.style.right = '0'; f.style.bottom = '0';
+    f.style.width = '0'; f.style.height = '0'; f.style.border = '0';
+    document.body.appendChild(f);
+    var doc = f.contentWindow.document;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Cuenta de cobro - ' +
       (persona.nombre || '') + '</title><style>' + css + '</style></head><body>' +
       node.outerHTML + '</body></html>');
-    win.document.close();
-    win.focus();
-    setTimeout(function () { win.print(); }, 350);
+    doc.close();
+    setTimeout(function () {
+      try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {}
+    }, 400);
   }
 
   return (
