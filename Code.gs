@@ -1778,6 +1778,10 @@ function migrarFormJsonAColumnas() {
   // Tomar las viejas cols 16/17/18 (revision/reposicion/funcionamiento)
   // + 19 (reporte) + 20 (video). Si la fila no tiene esos datos, skip.
   var bloqueViejo = hoja.getRange(2, 14, lastRow - 1, 7).getValues();
+  // Leer fórmulas de col 20 (video antiguo) para preservar HYPERLINKs.
+  // getValues() en una celda con =HYPERLINK(...) devuelve el label ("Ver video"),
+  // no la URL — getFormulas() devuelve la fórmula completa.
+  var videoFmlsViejo = hoja.getRange(2, 20, lastRow - 1, 1).getFormulas();
   var notasRevision      = hoja.getRange(2, 16, lastRow - 1, 1).getNotes();
   var notasReposicion    = hoja.getRange(2, 17, lastRow - 1, 1).getNotes();
   var notasFuncionamiento= hoja.getRange(2, 18, lastRow - 1, 1).getNotes();
@@ -1793,7 +1797,10 @@ function migrarFormJsonAColumnas() {
     var oldRep     = bloqueViejo[i][3];
     var oldFun     = bloqueViejo[i][4];
     var oldReporte = bloqueViejo[i][5];
-    var oldVideo   = bloqueViejo[i][6];
+    // Extraer URL del HYPERLINK si la celda tenía fórmula; si no, usar el valor plano.
+    var _videoFml  = videoFmlsViejo[i][0] || "";
+    var _urlMatch  = _videoFml.match(/=HYPERLINK\("([^"]+)"/);
+    var oldVideo   = _urlMatch ? _urlMatch[1] : String(bloqueViejo[i][6] || "");
 
     // Si está vacío, nada que migrar
     if (!oldEntrada && !oldSalida && !oldRev && !oldRep && !oldFun) {

@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install clasp
         run: npm install -g @google/clasp@2.4.2
@@ -66,7 +66,7 @@ jobs:
             sleep 5
             response=$(curl -sL -X POST "$GAS_URL" \
               -H "Content-Type: application/json" \
-              -d '{"action":"debug"}' || echo "")
+              -d '{"action":"runSelfTest"}' || echo "")
             if echo "$response" | grep -q '"ok":true'; then
               echo "Health check OK on attempt $i"
               exit 0
