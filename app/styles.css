@@ -153,10 +153,11 @@ html, body {
   overflow: hidden;
   transition: border-color .15s ease;
 }
-.aseo-card.s-urgent  { border-left-color: var(--state-urgent); }
-.aseo-card.s-pending { border-left-color: var(--state-pending); }
-.aseo-card.s-done    { border-left-color: var(--state-done); }
-.aseo-card.s-unassigned { border-left-color: var(--state-neutral); }
+.aseo-card.s-urgent    { border-left-color: var(--state-urgent); }
+.aseo-card.s-pending   { border-left-color: var(--state-pending); }
+.aseo-card.s-done      { border-left-color: var(--state-done); }
+.aseo-card.s-unassigned{ border-left-color: var(--state-neutral); }
+.aseo-card.s-cancelled { border-left-color: #ccc; opacity: .6; }
 .aseo-card.priority  { border-left-width: 4px; border-left-color: var(--accent); }
 
 .aseo-head {
@@ -202,8 +203,10 @@ html, body {
 .status.s-pending .dot { background: var(--state-pending); }
 .status.s-done    { color: var(--state-done); }
 .status.s-done    .dot { background: var(--state-done); }
-.status.s-unassigned { color: var(--state-neutral); }
+.status.s-unassigned   { color: var(--state-neutral); }
 .status.s-unassigned .dot { background: var(--state-neutral); }
+.status.s-cancelled    { color: #999; }
+.status.s-cancelled .dot { background: #ccc; }
 
 /* expanded panel */
 .aseo-expand {
@@ -455,9 +458,10 @@ html, body {
   border-left: 3px solid var(--state-neutral);
   border-radius: 8px; padding: var(--sp-base) var(--sp-md); margin-bottom: var(--sp-sm);
 }
-.compact-card.s-urgent  { border-left-color: var(--state-urgent); }
-.compact-card.s-pending { border-left-color: var(--state-pending); }
-.compact-card.s-done    { border-left-color: var(--state-done); }
+.compact-card.s-urgent    { border-left-color: var(--state-urgent); }
+.compact-card.s-pending   { border-left-color: var(--state-pending); }
+.compact-card.s-done      { border-left-color: var(--state-done); }
+.compact-card.s-cancelled { border-left-color: #ccc; opacity: .6; }
 .compact-card .cc-main { flex: 1; min-width: 0; }
 .compact-card .cc-name { font-size: 14px; font-weight: 500; }
 

@@ -81,7 +81,7 @@ function propInitials(name) {
   return ((w[0]||'')[0]||'').toUpperCase() + ((w[1]||'')[0]||'').toUpperCase();
 }
 
-const STATUS_LABEL = { urgent:'Hoy', pending:'Pendiente', done:'Completado', unassigned:'Sin asignar' };
+const STATUS_LABEL = { urgent:'Hoy', pending:'Pendiente', done:'Completado', unassigned:'Sin asignar', cancelled:'Cancelado' };
 
 /* -------- Checklist del form de completado (4 secciones) -------- */
 /* Áreas de aseo — valor: 'ok' | 'review' | 'na' */
