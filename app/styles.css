@@ -689,12 +689,5 @@ html, body {
 .cc-table th { background: #f0ede9; font-weight: 700; }
 .cc-table .cc-right { text-align: right; white-space: nowrap; }
 .cc-table tfoot td { background: #faf8f5; }
-
-@media print {
-  body * { visibility: hidden !important; }
-  .cuenta-overlay, .cuenta-overlay * { visibility: visible !important; }
-  .cuenta-overlay { position: absolute; inset: 0; background: #fff; overflow: visible; }
-  .no-print { display: none !important; }
-  .cuenta-doc { box-shadow: none; margin: 0; max-width: none; padding: 0 12px; }
-  @page { margin: 16mm; }
-}
+/* La impresión se hace en una ventana nueva limpia (ver imprimirCuenta en
+   screens-admin.jsx); por eso no se usa @media print sobre la app principal. */
