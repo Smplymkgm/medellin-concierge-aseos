@@ -456,6 +456,8 @@ function CuentaCobro({ persona, lista, period, onClose }) {
   const filas = [...lista].sort((a, b) => a.checkout - b.checkout).map(a => aseoEnriched(a));
   const total = filas.reduce((s, a) => s + (a.precio || 0), 0);
   const esManual = (cod) => String(cod || '').indexOf('MAN') === 0;
+  // Nombre legal para la cuenta de cobro (cae al usuario si no se cargó)
+  const nombreCobro = (persona.nombreCompleto && persona.nombreCompleto.trim()) || persona.nombre;
 
   // Imprime usando un iframe oculto con estilos propios (sin el CSS del
   // marco de la app, que rompía el layout). La tabla usa ancho fijo y
@@ -465,7 +467,7 @@ function CuentaCobro({ persona, lista, period, onClose }) {
   const mesLabel = (period.mode === 'range' && period.from && period.to)
     ? (period.from + ' a ' + period.to)
     : (MESES_CAP[period.month] + ' ' + period.year);
-  const tituloArchivo = 'Cuenta de cobro ' + (persona.nombre || '') + ' ' + mesLabel;
+  const tituloArchivo = 'Cuenta de cobro ' + nombreCobro + ' ' + mesLabel;
 
   function imprimirCuenta() {
     const node = document.querySelector('.cuenta-doc');
@@ -520,14 +522,14 @@ function CuentaCobro({ persona, lista, period, onClose }) {
       <div className="cuenta-doc">
         <h1 className="cc-title">CUENTA DE COBRO — SERVICIOS DE ASEO</h1>
         <p className="cc-line">Fecha: {ddmmyyyy(new Date())}</p>
-        <p className="cc-line">Nombre del prestador(a): <strong>{persona.nombre}</strong></p>
+        <p className="cc-line">Nombre del prestador(a): <strong>{nombreCobro}</strong></p>
         <p className="cc-line">Documento de identidad: {persona.cedula || '________________'}</p>
         <p className="cc-line">Teléfono: {persona.tel || '________________'}</p>
         <p className="cc-line">A quién se factura: {EMPRESA} — NIT: {NIT_EMPRESA}</p>
 
         <h2 className="cc-h2">Concepto del servicio</h2>
         <p className="cc-line">
-          Por medio de la presente, yo, <strong>{persona.nombre}</strong>, certifico que presté servicios de aseo
+          Por medio de la presente, yo, <strong>{nombreCobro}</strong>, certifico que presté servicios de aseo
           de manera independiente durante el período comprendido entre el <strong>{ddmmyyyy(desde)}</strong> y
           el <strong>{ddmmyyyy(hasta)}</strong>, correspondientes a los servicios registrados a continuación.
         </p>
@@ -576,7 +578,7 @@ function CuentaCobro({ persona, lista, period, onClose }) {
         <p className="cc-line">Banco: {persona.banco || '________________'}</p>
         <p className="cc-line">Tipo de cuenta: {persona.tipoCuenta || '________________'}</p>
         <p className="cc-line">Número de cuenta: {persona.numeroCuenta || '________________'}</p>
-        <p className="cc-line">Titular: {persona.nombre}</p>
+        <p className="cc-line">Titular: {nombreCobro}</p>
 
         <p className="cc-firma">Firma: ____________________________</p>
         <p className="cc-foot">NO SE DESCUENTAN COSTOS Y GASTOS DE LA DECLARACIÓN DE RENTA</p>

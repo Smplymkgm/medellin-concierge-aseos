@@ -679,6 +679,7 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
   const [pin, setPin]     = useStateS('');
   const [tel, setTel]     = useStateS('');
   const [email, setEmail] = useStateS('');
+  const [nombreCompleto, setNombreCompleto] = useStateS('');
   const [cedula, setCedula]             = useStateS('');
   const [banco, setBanco]               = useStateS('');
   const [tipoCuenta, setTipoCuenta]     = useStateS('');
@@ -688,6 +689,7 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
       setPin(persona.pin || '');
       setTel(persona.tel || '');
       setEmail(persona.email || '');
+      setNombreCompleto(persona.nombreCompleto || '');
       setCedula(persona.cedula || '');
       setBanco(persona.banco || '');
       setTipoCuenta(persona.tipoCuenta || '');
@@ -703,6 +705,7 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
   const footer = (
     <button className="btn btn-primary btn-block btn-lg" disabled={!canSave}
       onClick={() => onSave(persona, { pin: pin, tel: tel.trim(), email: email.trim(),
+        nombreCompleto: nombreCompleto.trim(),
         cedula: cedula.trim(), banco: banco.trim(), tipoCuenta: tipoCuenta.trim(), numeroCuenta: numeroCuenta.trim() })}>Guardar cambios</button>
   );
 
@@ -717,10 +720,23 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
       </div>
 
       <div className="form-group">
-        <label className="label">PIN (4 dígitos)</label>
+        <label className="label">Nombre de usuario (login)</label>
+        <input className="text-input" value={persona.nombre} disabled readOnly
+          style={{ opacity: .65, cursor: 'not-allowed' }} />
+        <div className="caption sec" style={{ marginTop: 4 }}>Es el nombre con que inicia sesión y se asignan los aseos. No se puede cambiar aquí para no desvincular su historial.</div>
+      </div>
+
+      <div className="form-group">
+        <label className="label">Clave (PIN · 4 dígitos)</label>
         <input className="text-input" inputMode="numeric" maxLength="4" value={pin}
           onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="0000"
           style={{ letterSpacing: '0.3em', fontVariantNumeric: 'tabular-nums' }} />
+      </div>
+
+      <div className="form-group">
+        <label className="label">Nombre completo (para cuenta de cobro)</label>
+        <input className="text-input" value={nombreCompleto} onChange={e => setNombreCompleto(e.target.value)}
+          placeholder="María Fernanda Giraldo Taborda" />
       </div>
 
       <div className="form-group">
