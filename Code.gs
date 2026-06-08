@@ -1994,7 +1994,11 @@ function recuperarLinksVideos() {
     for (var i = 0; i < vals.length; i++) {
       var cur = String(vals[i][0] || "").trim();
       var hasF = !!fms[i][0];
-      if (hasF || !cur || cur.indexOf("http") === 0) {
+      if (hasF) {
+        ups.push([fms[i][0]]);  // preservar la fórmula tal cual, no el valor mostrado
+        continue;
+      }
+      if (!cur || cur.indexOf("http") === 0) {
         ups.push([vals[i][0]]);
         continue;
       }
@@ -2025,7 +2029,11 @@ function recuperarLinksVideos() {
     for (var j = 0; j < vals2.length; j++) {
       var cur2 = String(vals2[j][0] || "").trim();
       var hasF2 = !!fms2[j][0];
-      if (hasF2 || !cur2 || cur2.indexOf("http") === 0) {
+      if (hasF2) {
+        ups2.push([fms2[j][0]]);  // preservar la fórmula tal cual
+        continue;
+      }
+      if (!cur2 || cur2.indexOf("http") === 0) {
         ups2.push([vals2[j][0]]);
         continue;
       }
