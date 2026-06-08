@@ -659,9 +659,12 @@ function handleAsignarAseo(body) {
     var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
     var aseoInfo = null;
 
+    var rowSnapshot = null;
+    var aseadoraAnterior = "";
     for (var i = 0; i < datos.length; i++) {
       if (String(datos[i][0]) !== codigo) continue;
       var fila = i + 2;
+      aseadoraAnterior = String(datos[i][6] || "").trim();
       hoja.getRange(fila, 7).setValue(aseadora);
 
       var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
@@ -670,6 +673,7 @@ function handleAsignarAseo(body) {
         propiedad: String(datos[i][2]),
         checkout:  checkoutStr,
       };
+      rowSnapshot = datos[i];
       break;
     }
 
@@ -686,9 +690,12 @@ function handleAsignarAseo(body) {
       }
     }
 
-    if (aseadora) {
+    // Solo notificar si la aseadora realmente cambió (evita emails duplicados
+    // cuando el admin guarda el mismo valor o el frontend reintenta la llamada)
+    var aseadoraCambio = aseadora && aseadora !== aseadoraAnterior;
+    if (aseadoraCambio) {
       notificarHubspot(aseoInfo, aseadora);
-      try { notificarAsignacionEmail(aseoInfo, aseadora, datos[i]); } catch(e) { Logger.log("Email asignación: " + e.message); }
+      try { notificarAsignacionEmail(aseoInfo, aseadora, rowSnapshot); } catch(e) { Logger.log("Email asignación: " + e.message); }
     }
 
     return respond(true, null);
