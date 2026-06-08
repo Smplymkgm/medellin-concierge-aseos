@@ -150,6 +150,7 @@ function transformPersonal(apiPersonal) {
       banco:        p.banco || '',
       tipoCuenta:   p.tipoCuenta || '',
       numeroCuenta: p.numeroCuenta || '',
+      nombreCompleto: p.nombreCompleto || '',
     };
   });
 }
@@ -566,7 +567,8 @@ function App() {
   function doSaveCleaner(persona, cambios) {
     const next = personal.map(p => p.nombre === persona.nombre
       ? { ...p, pin: cambios.pin || p.pin, tel: cambios.tel, email: cambios.email,
-          cedula: cambios.cedula, banco: cambios.banco, tipoCuenta: cambios.tipoCuenta, numeroCuenta: cambios.numeroCuenta }
+          cedula: cambios.cedula, banco: cambios.banco, tipoCuenta: cambios.tipoCuenta, numeroCuenta: cambios.numeroCuenta,
+          nombreCompleto: cambios.nombreCompleto }
       : p);
     setLivePersonal(next); setPersonal(next);
     setEditCleanerOpen(false);
@@ -583,6 +585,7 @@ function App() {
         banco:        cambios.banco,
         tipoCuenta:   cambios.tipoCuenta,
         numeroCuenta: cambios.numeroCuenta,
+        nombreCompleto: cambios.nombreCompleto,
       }
     }).then(res => {
       if (res && res.ok) showToast('Datos guardados');
