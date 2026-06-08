@@ -679,11 +679,19 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
   const [pin, setPin]     = useStateS('');
   const [tel, setTel]     = useStateS('');
   const [email, setEmail] = useStateS('');
+  const [cedula, setCedula]             = useStateS('');
+  const [banco, setBanco]               = useStateS('');
+  const [tipoCuenta, setTipoCuenta]     = useStateS('');
+  const [numeroCuenta, setNumeroCuenta] = useStateS('');
   useEffectS(() => {
     if (open && persona) {
       setPin(persona.pin || '');
       setTel(persona.tel || '');
       setEmail(persona.email || '');
+      setCedula(persona.cedula || '');
+      setBanco(persona.banco || '');
+      setTipoCuenta(persona.tipoCuenta || '');
+      setNumeroCuenta(persona.numeroCuenta || '');
     }
   }, [open, persona]);
 
@@ -694,7 +702,8 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
 
   const footer = (
     <button className="btn btn-primary btn-block btn-lg" disabled={!canSave}
-      onClick={() => onSave(persona, { pin: pin, tel: tel.trim(), email: email.trim() })}>Guardar cambios</button>
+      onClick={() => onSave(persona, { pin: pin, tel: tel.trim(), email: email.trim(),
+        cedula: cedula.trim(), banco: banco.trim(), tipoCuenta: tipoCuenta.trim(), numeroCuenta: numeroCuenta.trim() })}>Guardar cambios</button>
   );
 
   return (
@@ -719,9 +728,32 @@ function EditarAseadoraSheet({ open, persona, onClose, onSave }) {
         <input className="text-input" inputMode="tel" value={tel} onChange={e => setTel(e.target.value)} placeholder="+57 300 000 0000" />
       </div>
 
-      <div className="form-group" style={{ marginBottom: 0 }}>
+      <div className="form-group">
         <label className="label">Email</label>
         <input className="text-input" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nombre@medcon.co" />
+      </div>
+
+      <div className="divider"></div>
+      <div className="section-title" style={{ marginBottom: 6 }}><Icon name="money" size={16} /><span className="h3">Datos de facturación</span></div>
+      <div className="caption" style={{ marginBottom: 12 }}>Se usan en la cuenta de cobro (PDF) mensual.</div>
+
+      <div className="form-group">
+        <label className="label">Cédula</label>
+        <input className="text-input" inputMode="numeric" value={cedula} onChange={e => setCedula(e.target.value)} placeholder="1017167704" />
+      </div>
+      <div className="row gap-base" style={{ alignItems: 'flex-start' }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Banco</label>
+          <input className="text-input" value={banco} onChange={e => setBanco(e.target.value)} placeholder="Bancolombia" />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="label">Tipo de cuenta</label>
+          <input className="text-input" value={tipoCuenta} onChange={e => setTipoCuenta(e.target.value)} placeholder="Ahorros" />
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Número de cuenta</label>
+        <input className="text-input" inputMode="numeric" value={numeroCuenta} onChange={e => setNumeroCuenta(e.target.value)} placeholder="26841137611" />
       </div>
     </Sheet>
   );
