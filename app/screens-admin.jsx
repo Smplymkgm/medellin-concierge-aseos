@@ -460,12 +460,21 @@ function CuentaCobro({ persona, lista, period, onClose }) {
   // Imprime usando un iframe oculto con estilos propios (sin el CSS del
   // marco de la app, que rompía el layout). La tabla usa ancho fijo y
   // envuelve el texto para que NO se corte ni se salga de la página.
+  // Etiqueta del período para el nombre del archivo
+  const MESES_CAP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesLabel = (period.mode === 'range' && period.from && period.to)
+    ? (period.from + ' a ' + period.to)
+    : (MESES_CAP[period.month] + ' ' + period.year);
+  const tituloArchivo = 'Cuenta de cobro ' + (persona.nombre || '') + ' ' + mesLabel;
+
   function imprimirCuenta() {
     const node = document.querySelector('.cuenta-doc');
     if (!node) return;
+    // @page sin margen + padding en el body: así el body ocupa EXACTAMENTE
+    // el ancho de la hoja y la tabla (100%) nunca se desborda/corta.
     const css =
-      "*{box-sizing:border-box;} html,body{margin:0;padding:0;}" +
-      "body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a1a;font-size:12px;line-height:1.45;}" +
+      "*{box-sizing:border-box;} html{margin:0;padding:0;}" +
+      "body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a1a;font-size:12px;line-height:1.45;margin:0;padding:13mm;}" +
       ".cuenta-doc{margin:0;max-width:100%;box-shadow:none;padding:0;}" +
       ".cc-title{font-size:17px;font-weight:700;text-align:center;margin:0 0 16px;}" +
       ".cc-h2{font-size:13px;font-weight:700;margin:16px 0 6px;border-bottom:1px solid #ddd;padding-bottom:4px;}" +
@@ -481,18 +490,19 @@ function CuentaCobro({ persona, lista, period, onClose }) {
       ".cc-table th:nth-child(5),.cc-table td:nth-child(5){width:27%;}" +
       ".cc-table th:nth-child(6),.cc-table td:nth-child(6){width:11%;}" +
       ".cc-table .cc-right{text-align:right;} .cc-table tfoot td{background:#faf8f5;}" +
-      "tr{page-break-inside:avoid;} @page{size:A4;margin:14mm;}";
+      "tr{page-break-inside:avoid;} @page{size:A4;margin:0;}";
     var prev = document.getElementById('cc-print-frame');
     if (prev) prev.remove();
     var f = document.createElement('iframe');
     f.id = 'cc-print-frame';
-    f.style.position = 'fixed'; f.style.right = '0'; f.style.bottom = '0';
-    f.style.width = '0'; f.style.height = '0'; f.style.border = '0';
+    // Tamaño A4 real (offscreen) para que el layout coincida con la impresión
+    f.style.position = 'fixed'; f.style.left = '-10000px'; f.style.top = '0';
+    f.style.width = '210mm'; f.style.height = '297mm'; f.style.border = '0';
     document.body.appendChild(f);
     var doc = f.contentWindow.document;
     doc.open();
-    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Cuenta de cobro - ' +
-      (persona.nombre || '') + '</title><style>' + css + '</style></head><body>' +
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>' +
+      tituloArchivo + '</title><style>' + css + '</style></head><body>' +
       node.outerHTML + '</body></html>');
     doc.close();
     setTimeout(function () {
