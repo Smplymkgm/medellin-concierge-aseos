@@ -509,7 +509,8 @@ function CuentaCobro({ persona, lista, period, onClose }) {
         <table className="cc-table">
           <thead>
             <tr>
-              <th>Código</th>
+              <th>Cód. propiedad</th>
+              <th>Código reserva</th>
               <th>Propiedad</th>
               <th>Fecha de aseo</th>
               <th>Notas</th>
@@ -519,6 +520,7 @@ function CuentaCobro({ persona, lista, period, onClose }) {
           <tbody>
             {filas.map((a, i) => (
               <tr key={a.codigo || i}>
+                <td>{a.prop || '—'}</td>
                 <td>{esManual(a.codigo) ? 'Aseo asignado' : a.codigo}</td>
                 <td>{a.propNombre}</td>
                 <td>{ddmmyyyy(a.checkout)}</td>
@@ -529,7 +531,7 @@ function CuentaCobro({ persona, lista, period, onClose }) {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="4"><strong>Número de aseos realizados: {filas.length}</strong></td>
+              <td colSpan="5"><strong>Número de aseos realizados: {filas.length}</strong></td>
               <td className="cc-right"><strong>{fmtCOP(total)}</strong></td>
             </tr>
           </tfoot>
