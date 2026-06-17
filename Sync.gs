@@ -318,16 +318,18 @@ function aplicarDropdowns(hoja) {
 // ============================================================
 
 function sincronizarHojaAseos() {
+  // Con el modelo de fuente dual, los PENDIENTES viven en "Todas las Reservas"
+  // y la app los lee de ahí. "Todos los Aseos" es SOLO historial de
+  // completados (creados al completar un aseo). Aquí solo limpiamos esa hoja:
+  // conservamos las filas Completado y borramos el resto (pendientes viejos,
+  // cancelados, vacíos).
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); } catch(e) {
     Logger.log("sincronizarHojaAseos: otro proceso en ejecucion, abortando");
     return;
   }
   try {
-    var ss     = SpreadsheetApp.getActiveSpreadsheet();
-    var master = ss.getSheetByName(CONFIG.hojaMaestra);
-    if (!master || master.getLastRow() < 2) return;
-
+    var ss   = SpreadsheetApp.getActiveSpreadsheet();
     var hoja = ss.getSheetByName(CONFIG.hojaAseos);
     if (!hoja) {
       hoja = ss.insertSheet(CONFIG.hojaAseos);
@@ -338,162 +340,21 @@ function sincronizarHojaAseos() {
         .setFontWeight("bold").setFontSize(11).setFontFamily("Arial");
       hoja.setFrozenRows(1);
       hoja.hideColumns(12);
+      return;
     }
+    if (hoja.getLastRow() < 2) return;
 
-    // Index aseos existentes (por código y por identidad propiedad+checkout)
-    var existentes = {};
-    var existRows  = [];
-    var existeStay = {};   // (idProp|propiedad)+"|"+checkout -> true
-    if (hoja.getLastRow() > 1) {
-      var exDatos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-      var exDisp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
-      for (var i = 0; i < exDatos.length; i++) {
-        var cod = String(exDatos[i][0]);
-        if (cod) {
-          existentes[cod] = { row: i+2, estado: String(exDatos[i][7]), data: exDatos[i] };
-          existRows.push(i + 2);
-          var pKey = (String(exDatos[i][1]||"").trim() || String(exDatos[i][2]||"").trim());
-          var coKey = exDisp[i][1] || fechaToStr(exDatos[i][4]);
-          existeStay[pKey + "|" + coKey] = true;
-        }
-      }
+    var rango = hoja.getRange(2, 1, hoja.getLastRow()-1, 8).getValues();
+    var delRows = [];
+    for (var i = 0; i < rango.length; i++) {
+      var cod = String(rango[i][0] || "").trim();
+      var est = String(rango[i][7] || "").trim();
+      // Conservar completados y aseos manuales (MAN-) aunque estén pendientes.
+      if (est === "Completado") continue;
+      if (cod.indexOf("MAN") === 0) continue;
+      delRows.push(i + 2);
     }
-
-    var mDatos = master.getRange(2, 1, master.getLastRow()-1, 13).getValues();
-    var mDisp  = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
-    var nuevas = [];
-
-    // Set de códigos vigentes en el master (para reconciliar huérfanos) +
-    // mejor fila por código. Si un huésped se mueve de suite conservando el
-    // código, el master tiene 2 filas (vieja Cancelada, nueva Confirmada):
-    // procesamos SOLO la mejor (Finalizado > Confirmada > Cancelada) para
-    // que el aseo refleje la suite nueva, no la vieja cancelada.
-    var codigosMaster = {};
-    var mejorIdx = {};
-    function rankEstado(e) { return e === "Finalizado" ? 3 : (e === "Cancelada" ? 1 : 2); }
-    for (var m = 0; m < mDatos.length; m++) {
-      var cm = String(mDatos[m][0]).trim();
-      if (!cm) continue;
-      codigosMaster[cm] = true;
-      var rk = rankEstado(String(mDatos[m][6] || ""));
-      if (mejorIdx[cm] === undefined || rk > mejorIdx[cm].rank) mejorIdx[cm] = { i: m, rank: rk };
-    }
-
-    // Recolectar updates en batches por fila (filas adyacentes podrían
-    // beneficiarse de range mas grande, pero por ahora hacemos un setValues
-    // por fila actualizada — mucho mejor que 9 setValue cada uno)
-    var updatesPorFila = []; // {fila, valores[9], bg, estado, ts}
-
-    for (var i = 0; i < mDatos.length; i++) {
-      var r   = mDatos[i];
-      var cod = String(r[0]);
-      if (!cod) continue;
-      // Solo la mejor fila por código (evita que la suite vieja cancelada
-      // pise a la suite nueva confirmada cuando un huésped se mueve).
-      if (mejorIdx[cod] && mejorIdx[cod].i !== i) continue;
-
-      var checkinStr  = mDisp[i][0] || fechaToStr(r[3]);
-      var checkoutStr = mDisp[i][1] || fechaToStr(r[4]);
-      var estadoMaster = String(r[6] || "");
-
-      if (existentes[cod]) {
-        var estadoActual = existentes[cod].estado;
-        if (estadoActual === "Completado") continue; // nunca degradar
-
-        var nuevoEstado = estadoActual || "Pendiente";
-        if (estadoMaster === "Cancelada")  nuevoEstado = "Cancelado";
-        if (estadoMaster === "Finalizado") nuevoEstado = "Completado";
-
-        var bg = nuevoEstado === "Completado" ? "#e8f5e9" :
-                 nuevoEstado === "Cancelado"  ? "#fff3f3" : "#ffffff";
-        var tsExisting = existentes[cod].data[12];
-        var ts = "";
-        if (nuevoEstado === "Completado" && !tsExisting) {
-          ts = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
-        }
-
-        updatesPorFila.push({
-          fila: existentes[cod].row,
-          // cols 3..11 = Propiedad, Checkin, Checkout, Noches, Aseadora, Estado, Precio, Notas, Acceso
-          valores: [
-            String(r[2] || ""),
-            checkinStr,
-            checkoutStr,
-            r[5] || 0,
-            String(r[7] || ""),
-            nuevoEstado,
-            Number(r[8]) || 0,
-            String(r[9] || ""),
-            String(r[10] || ""),
-          ],
-          bg: bg,
-          ts: ts,
-        });
-      } else {
-        // Prevención de duplicados: si ya existe un aseo para esta propiedad
-        // y este día de checkout (aunque con otro código), NO crear otra fila.
-        // El código del iCal puede cambiar entre syncs y multiplicaría el aseo.
-        var stayKey = (String(r[1]||"").trim() || String(r[2]||"").trim()) + "|" + checkoutStr;
-        if (existeStay[stayKey]) continue;
-        existeStay[stayKey] = true;
-        // No crear filas canceladas: si la reserva ya llega cancelada, no
-        // tiene sentido como aseo (mantiene la hoja limpia).
-        if (estadoMaster === "Cancelada") continue;
-        var estado = estadoMaster === "Finalizado" ? "Completado" : "Pendiente";
-        var tsNew = estado === "Completado" ?
-          Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm") : "";
-        nuevas.push([
-          cod, r[1], r[2], checkinStr, checkoutStr, r[5],
-          r[7]||"", estado, r[8]||0, r[9]||"", r[10]||"", r[11]||"", tsNew
-        ]);
-      }
-    }
-
-    // Aplicar updates por fila — un setValues por fila (9 cols) en vez de 9 setValue
-    for (var u = 0; u < updatesPorFila.length; u++) {
-      var up = updatesPorFila[u];
-      hoja.getRange(up.fila, 3, 1, 9).setValues([up.valores]);
-      hoja.getRange(up.fila, 1, 1, 13).setBackground(up.bg);
-      if (up.ts) hoja.getRange(up.fila, 13).setValue(up.ts);
-    }
-
-    // RECONCILIACIÓN: aseos en la hoja cuyo código YA NO está en el master
-    // (la reserva desapareció del iCal). Si están Pendiente y no son manuales
-    // ni completados, se marcan Cancelado para que no aparezcan en la app.
-    // Esto evita la acumulación de duplicados cuando un código cambia.
-    for (var cod in existentes) {
-      if (codigosMaster[cod]) continue;                 // sigue vigente
-      if (cod.indexOf("MAN") === 0) continue;           // aseo manual → respetar
-      var ex = existentes[cod];
-      var est = String(ex.estado || "").trim();
-      if (est === "Completado" || est === "Cancelado") continue; // no degradar
-      hoja.getRange(ex.row, 8).setValue("Cancelado");
-      hoja.getRange(ex.row, 1, 1, 13).setBackground("#fff3f3");
-    }
-
-    if (nuevas.length > 0) {
-      var fi = hoja.getLastRow() + 1;
-      hoja.getRange(fi, 1, nuevas.length, 13).setValues(nuevas);
-      hoja.getRange(fi, 4, nuevas.length, 2).setNumberFormat("@");
-      hoja.getRange(fi, 9, nuevas.length, 1).setNumberFormat("$#,##0");
-      for (var i = 0; i < nuevas.length; i++) {
-        var bgN = nuevas[i][7] === "Completado" ? "#e8f5e9" : "#f8f9fa";
-        hoja.getRange(fi+i, 1, 1, 13).setBackground(bgN).setFontFamily("Arial").setFontSize(10);
-      }
-    }
-
-    // BARRIDO FINAL: eliminar filas canceladas para mantener la hoja limpia.
-    // Se conservan Pendiente (las ve la app) y Completado (historial). Los
-    // cancelados ya no aportan nada operativo.
-    var totalRows = hoja.getLastRow();
-    if (totalRows > 1) {
-      var estCol = hoja.getRange(2, 8, totalRows - 1, 1).getValues();
-      var delRows = [];
-      for (var d = 0; d < estCol.length; d++) {
-        if (String(estCol[d][0]).trim() === "Cancelado") delRows.push(d + 2);
-      }
-      for (var dd = delRows.length - 1; dd >= 0; dd--) hoja.deleteRow(delRows[dd]);
-    }
+    for (var d = delRows.length - 1; d >= 0; d--) hoja.deleteRow(delRows[d]);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }

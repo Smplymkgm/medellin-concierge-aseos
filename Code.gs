@@ -438,63 +438,91 @@ function handleCompletarAseo(body) {
     var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
     var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
 
+    // Buscar la fila del aseo en "Todos los Aseos"
+    var fila = -1, propiedadAseo = "", checkoutStr = "";
     for (var i = 0; i < datos.length; i++) {
       if (String(datos[i][0]) !== codigo) continue;
-      if (String(datos[i][6]).trim() !== nombre) return respond(false, null, "No autorizado");
+      if (String(datos[i][6]).trim() && String(datos[i][6]).trim() !== nombre)
+        return respond(false, null, "No autorizado");
+      fila = i + 2;
+      propiedadAseo = String(datos[i][2]);
+      checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
+      break;
+    }
 
-      var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
-      var checkout    = fechaADate(checkoutStr);
-      if (!checkout)      return respond(false, null, "Fecha invalida");
-      if (checkout > hoy) return respond(false, null, "No puedes completar aseos futuros");
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
+    var masterRow = -1;
 
-      var fila  = i + 2;
-      var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+    // Si NO existe fila (el pendiente vive solo en el master), crearla desde
+    // los datos del master. Así "Todos los Aseos" solo contiene completados.
+    if (fila === -1) {
+      if (!master || master.getLastRow() < 2) return respond(false, null, "Aseo no encontrado");
+      var mAll  = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
+      var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
+      var resv = null;
+      for (var k = 0; k < mAll.length; k++) {
+        if (String(mAll[k][0]).trim() === codigo) { resv = mAll[k]; masterRow = k + 2;
+          checkoutStr = mDisp[k][1] || fechaToStr(mAll[k][4]); break; }
+      }
+      if (!resv) return respond(false, null, "Aseo no encontrado");
+      var asignadaM = String(resv[7] || "").trim();
+      if (asignadaM && asignadaM !== nombre) return respond(false, null, "No autorizado");
 
-      // Batch write: cols 8 (Estado) y 13 (Completado) en una sola op para las
-      // celdas que son adyacentes al rango formulario. Para minimizar llamadas
-      // a Sheets API hacemos updates por celda relevante.
-      hoja.getRange(fila, 8).setValue("Completado");
-      hoja.getRange(fila, 13).setValue(ahora);
-      if (notas) hoja.getRange(fila, 10).setValue(notas);
+      var checkoutNew = fechaADate(checkoutStr);
+      if (!checkoutNew)      return respond(false, null, "Fecha invalida");
+      if (checkoutNew > hoy) return respond(false, null, "No puedes completar aseos futuros");
 
-      // Batch write a TODAS las columnas del form (una celda por ítem)
-      var rowValues = buildFormRow(body);
-      hoja.getRange(fila, FORM_FIRST_COL, 1, rowValues.length).setValues([rowValues])
-        .setHorizontalAlignment("center")
-        .setVerticalAlignment("middle");
-      // Excepción: reporte y video alineados a la izquierda
-      var reporteCol = FORM_FIRST_COL + FORM_COLUMNS.length - 2;
-      hoja.getRange(fila, reporteCol, 1, 2).setHorizontalAlignment("left").setWrap(true);
+      var checkinStrN = mDisp[masterRow-2][0] || fechaToStr(resv[3]);
+      propiedadAseo = String(resv[2] || "");
+      hoja.appendRow([
+        codigo, String(resv[1]||""), propiedadAseo, checkinStrN, checkoutStr,
+        Number(resv[5])||0, nombre, "Pendiente", Number(resv[8])||0,
+        notas || String(resv[9]||""), String(resv[10]||""), "", ""
+      ]);
+      fila = hoja.getLastRow();
+      hoja.getRange(fila, 4, 1, 2).setNumberFormat("@");
+      hoja.getRange(fila, 9, 1, 1).setNumberFormat("$#,##0");
+    } else {
+      var checkoutChk = fechaADate(checkoutStr);
+      if (!checkoutChk)      return respond(false, null, "Fecha invalida");
+      if (checkoutChk > hoy) return respond(false, null, "No puedes completar aseos futuros");
+    }
 
-      hoja.getRange(fila, 1, 1, FORM_LAST_COL).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+    var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+    hoja.getRange(fila, 7).setValue(nombre);   // aseadora (asegura el completador)
+    hoja.getRange(fila, 8).setValue("Completado");
+    hoja.getRange(fila, 13).setValue(ahora);
+    if (notas) hoja.getRange(fila, 10).setValue(notas);
 
-      // Sync al master
-      var master = ss.getSheetByName(CONFIG.hojaMaestra);
-      if (master && master.getLastRow() >= 2) {
+    var rowValues = buildFormRow(body);
+    hoja.getRange(fila, FORM_FIRST_COL, 1, rowValues.length).setValues([rowValues])
+      .setHorizontalAlignment("center").setVerticalAlignment("middle");
+    var reporteCol = FORM_FIRST_COL + FORM_COLUMNS.length - 2;
+    hoja.getRange(fila, reporteCol, 1, 2).setHorizontalAlignment("left").setWrap(true);
+    hoja.getRange(fila, 1, 1, FORM_LAST_COL).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+
+    // Marcar Finalizado en el master
+    if (master && master.getLastRow() >= 2) {
+      if (masterRow === -1) {
         var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
         for (var j = 0; j < mc.length; j++) {
-          if (String(mc[j][0]) === codigo) {
-            master.getRange(j+2, 7).setValue("Finalizado");
-            master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
-            break;
-          }
+          if (String(mc[j][0]) === codigo) { masterRow = j + 2; break; }
         }
       }
-
-      if (videoLink) {
-        registrarVideoEnHoja({
-          codigo:    codigo,
-          propiedad: String(datos[i][2]),
-          aseadora:  nombre,
-          checkout:  checkoutStr,
-          videoLink: videoLink,
-          notas:     notas,
-        });
+      if (masterRow !== -1) {
+        master.getRange(masterRow, 7).setValue("Finalizado");
+        master.getRange(masterRow, 1, 1, 13).setBackground("#e8f5e9");
       }
-
-      return respond(true, null);
     }
-    return respond(false, null, "Aseo no encontrado");
+
+    if (videoLink) {
+      registrarVideoEnHoja({
+        codigo: codigo, propiedad: propiedadAseo, aseadora: nombre,
+        checkout: checkoutStr, videoLink: videoLink, notas: notas,
+      });
+    }
+
+    return respond(true, null);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }
@@ -650,43 +678,50 @@ function handleAsignarAseo(body) {
   try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
   try {
     var ss   = getSS();
-    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-    if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
-
-    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-    var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
     var aseoInfo = null;
-
     var rowSnapshot = null;
     var aseadoraAnterior = "";
-    for (var i = 0; i < datos.length; i++) {
-      if (String(datos[i][0]) !== codigo) continue;
-      var fila = i + 2;
-      aseadoraAnterior = String(datos[i][6] || "").trim();
-      hoja.getRange(fila, 7).setValue(aseadora);
 
-      var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
-      aseoInfo = {
-        codigo:    codigo,
-        propiedad: String(datos[i][2]),
-        checkout:  checkoutStr,
-      };
-      rowSnapshot = datos[i];
-      break;
+    // PRIMARIO: el master "Todas las Reservas" (ahí viven los pendientes)
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
+    if (master && master.getLastRow() >= 2) {
+      var mAll  = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
+      var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
+      for (var j = 0; j < mAll.length; j++) {
+        if (String(mAll[j][0]).trim() !== codigo) continue;
+        aseadoraAnterior = String(mAll[j][7] || "").trim();
+        master.getRange(j+2, 8).setValue(aseadora);
+        aseoInfo = {
+          codigo:    codigo,
+          propiedad: String(mAll[j][2]),
+          checkout:  mDisp[j][1] || fechaToStr(mAll[j][4]),
+        };
+        rowSnapshot = [mAll[j][0], mAll[j][1], mAll[j][2], mAll[j][3], mAll[j][4],
+                       mAll[j][5], aseadora, mAll[j][6], mAll[j][8], mAll[j][9], mAll[j][10]];
+        break;
+      }
+    }
+
+    // SECUNDARIO: si ya existe fila en "Todos los Aseos" (aseo completado o
+    // remanente), también se actualiza su aseadora.
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (hoja && hoja.getLastRow() >= 2) {
+      var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+      var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+      for (var i = 0; i < datos.length; i++) {
+        if (String(datos[i][0]) !== codigo) continue;
+        var fila = i + 2;
+        if (!aseoInfo) {
+          aseadoraAnterior = String(datos[i][6] || "").trim();
+          aseoInfo = { codigo: codigo, propiedad: String(datos[i][2]), checkout: disp[i][1] || fechaToStr(datos[i][4]) };
+          rowSnapshot = datos[i];
+        }
+        hoja.getRange(fila, 7).setValue(aseadora);
+        break;
+      }
     }
 
     if (!aseoInfo) return respond(false, null, "Aseo no encontrado");
-
-    var master = ss.getSheetByName(CONFIG.hojaMaestra);
-    if (master && master.getLastRow() >= 2) {
-      var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-      for (var j = 0; j < mc.length; j++) {
-        if (String(mc[j][0]) === codigo) {
-          master.getRange(j+2, 8).setValue(aseadora);
-          break;
-        }
-      }
-    }
 
     // Solo notificar si la aseadora realmente cambió (evita emails duplicados
     // cuando el admin guarda el mismo valor o el frontend reintenta la llamada)
@@ -824,33 +859,33 @@ function handleMoverAseo(body) {
   if (!fechaADate(nuevaFecha)) return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
 
   var ss   = getSS();
-  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
-
-  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
   var encontrado = false;
 
-  for (var i = 0; i < datos.length; i++) {
-    if (String(datos[i][0]) !== codigo) continue;
-    var fila = i + 2;
-    hoja.getRange(fila, 5).setValue(nuevaFecha).setNumberFormat("@");
-    encontrado = true;
-    break;
-  }
-
-  if (!encontrado) return respond(false, null, "Aseo no encontrado");
-
+  // PRIMARIO: master (pendientes). SECUNDARIO: aseos (completados/remanentes).
   var master = ss.getSheetByName(CONFIG.hojaMaestra);
   if (master && master.getLastRow() >= 2) {
     var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
     for (var j = 0; j < mc.length; j++) {
       if (String(mc[j][0]) === codigo) {
         master.getRange(j+2, 5).setValue(nuevaFecha).setNumberFormat("@");
+        encontrado = true;
         break;
       }
     }
   }
 
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (hoja && hoja.getLastRow() >= 2) {
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues();
+    for (var i = 0; i < datos.length; i++) {
+      if (String(datos[i][0]) !== codigo) continue;
+      hoja.getRange(i+2, 5).setValue(nuevaFecha).setNumberFormat("@");
+      encontrado = true;
+      break;
+    }
+  }
+
+  if (!encontrado) return respond(false, null, "Aseo no encontrado");
   return respond(true, null);
 }
 
@@ -1431,43 +1466,58 @@ function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
 // ============================================================
 
 function autoCompletarAseosPasados() {
-  var ss   = getSS();
-  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja || hoja.getLastRow() < 2) return;
+  // Los pendientes viven en el master (Confirmada). Para los que ya pasaron y
+  // tienen aseadora asignada, creamos su fila completada en "Todos los Aseos"
+  // (auto, sin form) y marcamos el master Finalizado.
+  var ss     = getSS();
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  var hoja   = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!master || master.getLastRow() < 2 || !hoja) return;
 
   var hoy   = new Date(); hoy.setHours(0,0,0,0);
-  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
-  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
   var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
+  var mAll  = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
+  var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
 
-  var count = 0;
-  for (var i = 0; i < datos.length; i++) {
-    var estado = String(datos[i][7]);
-    if (estado === "Completado" || estado === "Cancelado") continue;
-    if (!String(datos[i][6])) continue;
+  // Códigos ya presentes en "Todos los Aseos" (para no duplicar)
+  var yaEnAseos = {};
+  if (hoja.getLastRow() >= 2) {
+    var aCods = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues();
+    for (var c = 0; c < aCods.length; c++) yaEnAseos[String(aCods[c][0]).trim()] = true;
+  }
 
-    var checkoutStr = disp[i][1] || fechaToStr(datos[i][4]);
+  var nuevas = [], filasFinalizar = [], count = 0;
+  for (var i = 0; i < mAll.length; i++) {
+    var r = mAll[i];
+    var codigo = String(r[0]).trim();
+    if (!codigo) continue;
+    if (String(r[6] || "").trim() !== "Confirmada") continue; // solo vigentes
+    var aseadora = String(r[7] || "").trim();
+    if (!aseadora) continue;                                   // sin asignar → no auto
+    if (yaEnAseos[codigo]) continue;
+
+    var checkoutStr = mDisp[i][1] || fechaToStr(r[4]);
     var checkout    = fechaADate(checkoutStr);
-    if (!checkout || checkout >= hoy) continue;
+    if (!checkout || checkout >= hoy) continue;                // solo pasados
 
-    var fila   = i + 2;
-    var codigo = String(datos[i][0]);
-    hoja.getRange(fila, 8).setValue("Completado");
-    hoja.getRange(fila, 13).setValue(ahora + " (auto)");
-    hoja.getRange(fila, 1, 1, 13).setBackground("#e8f5e9");
-
-    var master = ss.getSheetByName(CONFIG.hojaMaestra);
-    if (master && master.getLastRow() >= 2) {
-      var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-      for (var j = 0; j < mc.length; j++) {
-        if (String(mc[j][0]) === codigo) {
-          master.getRange(j+2, 7).setValue("Finalizado");
-          master.getRange(j+2, 1, 1, 13).setBackground("#e8f5e9");
-          break;
-        }
-      }
-    }
+    var checkinStr = mDisp[i][0] || fechaToStr(r[3]);
+    nuevas.push([codigo, String(r[1]||""), String(r[2]||""), checkinStr, checkoutStr,
+      Number(r[5])||0, aseadora, "Completado", Number(r[8])||0,
+      String(r[9]||""), String(r[10]||""), "", ahora + " (auto)"]);
+    filasFinalizar.push(i + 2);
     count++;
+  }
+
+  if (nuevas.length > 0) {
+    var fi = hoja.getLastRow() + 1;
+    hoja.getRange(fi, 1, nuevas.length, 13).setValues(nuevas);
+    hoja.getRange(fi, 4, nuevas.length, 2).setNumberFormat("@");
+    hoja.getRange(fi, 9, nuevas.length, 1).setNumberFormat("$#,##0");
+    hoja.getRange(fi, 1, nuevas.length, 13).setBackground("#e8f5e9").setFontFamily("Arial").setFontSize(10);
+    for (var f = 0; f < filasFinalizar.length; f++) {
+      master.getRange(filasFinalizar[f], 7).setValue("Finalizado");
+      master.getRange(filasFinalizar[f], 1, 1, 13).setBackground("#e8f5e9");
+    }
   }
   Logger.log("autoCompletarAseosPasados: " + count + " aseos marcados.");
 }
@@ -1769,59 +1819,92 @@ function crearTriggersAutomaticos() {
 // API — getAllAseos + getAseosPorAseadora
 // ============================================================
 
+// Fuente DUAL:
+//  • Completados (historial) → hoja "Todos los Aseos"
+//  • Pendientes (por hacer)  → hoja "Todas las Reservas" (Confirmada)
+// Se fusionan y deduplican por propiedad+checkout. Un completado siempre
+// gana sobre un pendiente de la misma estadía.
 function getAllAseos() {
   var ss = getSS();
-  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (!hoja || hoja.getLastRow() < 2) return [];
-  var lastRow = hoja.getLastRow();
-  // Leer hasta col 15 (Salida) si existen, para devolver formFilled
-  var lastCol = hoja.getLastColumn();
-  var maxCol = Math.min(lastCol, 15);
-  var datos = hoja.getRange(2, 1, lastRow - 1, maxCol).getValues();
-  var disp  = hoja.getRange(2, 4, lastRow - 1, 2).getDisplayValues();
   var seen   = {};
   var result = [];
-  for (var i = 0; i < datos.length; i++) {
-    var r = datos[i];
-    var cod = String(r[0]).trim();
-    if (!cod) continue;
-    // Excluir cancelados — no tienen utilidad operativa en la app
-    var estado = String(r[7] || "").trim();
-    if (estado === "Cancelado") continue;
-    // Deduplicar por código. Si hay colisión, gana la fila "más completa":
-    // Completado > tiene formulario > Pendiente.
-    var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
-    var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
-    var obj = {
-      codigo:    cod,
-      idProp:    String(r[1]).trim(),
-      propiedad: String(r[2]).trim(),
-      checkin:   disp[i][0] || fechaToStr(r[3]),
-      checkout:  disp[i][1] || fechaToStr(r[4]),
-      noches:    Number(r[5]) || 0,
-      asignada:  String(r[6] || ""),
-      estado:    estado,
-      precio:    Number(r[8]) || 0,
-      notas:     String(r[9] || ""),
-      acceso:    String(r[10] || ""),
-      entrada:   entrada,
-      salida:    salida,
-      formFilled: !!(entrada || salida),
-    };
-    // Dedup por IDENTIDAD DEL ASEO = propiedad + día de salida (checkout).
-    // Una propiedad solo se asea una vez por día de checkout. Esto colapsa
-    // los duplicados aunque el iCal les haya dado códigos distintos (que es
-    // la causa real de la multiplicación). Gana la fila más completa:
-    // Completado > con formulario > manual > asignada.
-    var dedupKey = (obj.idProp || obj.propiedad) + "|" + obj.checkout;
-    if (seen[dedupKey] !== undefined) {
-      var prev = result[seen[dedupKey]];
-      if (_scoreAseo(obj) >= _scoreAseo(prev)) result[seen[dedupKey]] = obj;
+
+  function upsert(obj) {
+    var key = (obj.idProp || obj.propiedad) + "|" + obj.checkout;
+    if (seen[key] !== undefined) {
+      if (_scoreAseo(obj) >= _scoreAseo(result[seen[key]])) result[seen[key]] = obj;
     } else {
-      seen[dedupKey] = result.length;
+      seen[key] = result.length;
       result.push(obj);
     }
   }
+
+  // 1) Completados (y cualquier fila remanente) desde "Todos los Aseos"
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (hoja && hoja.getLastRow() >= 2) {
+    var lastRow = hoja.getLastRow();
+    var maxCol  = Math.min(hoja.getLastColumn(), 15);
+    var datos = hoja.getRange(2, 1, lastRow - 1, maxCol).getValues();
+    var disp  = hoja.getRange(2, 4, lastRow - 1, 2).getDisplayValues();
+    for (var i = 0; i < datos.length; i++) {
+      var r = datos[i];
+      var cod = String(r[0]).trim();
+      if (!cod) continue;
+      var estado = String(r[7] || "").trim();
+      if (estado === "Cancelado") continue;
+      var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
+      var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
+      upsert({
+        codigo:    cod,
+        idProp:    String(r[1]).trim(),
+        propiedad: String(r[2]).trim(),
+        checkin:   disp[i][0] || fechaToStr(r[3]),
+        checkout:  disp[i][1] || fechaToStr(r[4]),
+        noches:    Number(r[5]) || 0,
+        asignada:  String(r[6] || ""),
+        estado:    estado,
+        precio:    Number(r[8]) || 0,
+        notas:     String(r[9] || ""),
+        acceso:    String(r[10] || ""),
+        entrada:   entrada,
+        salida:    salida,
+        formFilled: !!(entrada || salida),
+      });
+    }
+  }
+
+  // 2) Pendientes desde el master "Todas las Reservas" (estado Confirmada)
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  if (master && master.getLastRow() >= 2) {
+    var mRow = master.getLastRow();
+    var mDatos = master.getRange(2, 1, mRow - 1, 11).getValues();
+    var mDisp  = master.getRange(2, 4, mRow - 1, 2).getDisplayValues();
+    for (var j = 0; j < mDatos.length; j++) {
+      var mr = mDatos[j];
+      var mcod = String(mr[0]).trim();
+      if (!mcod) continue;
+      var mEstado = String(mr[6] || "").trim();
+      // Solo reservas vigentes por hacer (no canceladas ni finalizadas)
+      if (mEstado !== "Confirmada" && mEstado !== "") continue;
+      upsert({
+        codigo:    mcod,
+        idProp:    String(mr[1]).trim(),
+        propiedad: String(mr[2]).trim(),
+        checkin:   mDisp[j][0] || fechaToStr(mr[3]),
+        checkout:  mDisp[j][1] || fechaToStr(mr[4]),
+        noches:    Number(mr[5]) || 0,
+        asignada:  String(mr[7] || ""),
+        estado:    "Pendiente",
+        precio:    Number(mr[8]) || 0,
+        notas:     String(mr[9] || ""),
+        acceso:    String(mr[10] || ""),
+        entrada:   "",
+        salida:    "",
+        formFilled: false,
+      });
+    }
+  }
+
   return result;
 }
 
