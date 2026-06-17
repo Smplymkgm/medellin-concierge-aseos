@@ -67,6 +67,11 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                   : <span className="ter">Sin asignar</span>}
               </span>
             )}
+            {role === 'aseadora' && a.precio > 0 && (
+              <span className="assignee" style={{ fontWeight: 600 }}>
+                <Icon name="money" size={14} /> {fmtCOP(a.precio)}
+              </span>
+            )}
           </div>
         </div>
         <Icon name="chevron-down" size={20} className="aseo-chevron" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
@@ -145,19 +150,17 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                 </div>
               </div>
             )}
-            {role === 'admin' && (
-              <div className="detail-row">
-                <Icon name="money" size={16} />
-                <div className="keypair">
-                  <span className="detail-label">Precio aseo</span>
-                  <span className="detail-value">
-                    {a.precio > 0
-                      ? fmtCOP(a.precio)
-                      : <span className="caption sec">Sin cargo · paga propietario</span>}
-                  </span>
-                </div>
+            <div className="detail-row">
+              <Icon name="money" size={16} />
+              <div className="keypair">
+                <span className="detail-label">{role === 'aseadora' ? 'Pago del aseo' : 'Precio aseo'}</span>
+                <span className="detail-value">
+                  {a.precio > 0
+                    ? fmtCOP(a.precio)
+                    : <span className="caption sec">Sin cargo · paga propietario</span>}
+                </span>
               </div>
-            )}
+            </div>
 
             {a.status !== 'done' && (
               <div className="aseo-actions" style={{ flexWrap: 'wrap' }}>

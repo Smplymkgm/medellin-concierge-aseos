@@ -363,11 +363,20 @@ function sincronizarHojaAseos() {
     var mDisp  = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
     var nuevas = [];
 
-    // Set de códigos vigentes en el master (para reconciliar huérfanos)
+    // Set de códigos vigentes en el master (para reconciliar huérfanos) +
+    // mejor fila por código. Si un huésped se mueve de suite conservando el
+    // código, el master tiene 2 filas (vieja Cancelada, nueva Confirmada):
+    // procesamos SOLO la mejor (Finalizado > Confirmada > Cancelada) para
+    // que el aseo refleje la suite nueva, no la vieja cancelada.
     var codigosMaster = {};
+    var mejorIdx = {};
+    function rankEstado(e) { return e === "Finalizado" ? 3 : (e === "Cancelada" ? 1 : 2); }
     for (var m = 0; m < mDatos.length; m++) {
       var cm = String(mDatos[m][0]).trim();
-      if (cm) codigosMaster[cm] = true;
+      if (!cm) continue;
+      codigosMaster[cm] = true;
+      var rk = rankEstado(String(mDatos[m][6] || ""));
+      if (mejorIdx[cm] === undefined || rk > mejorIdx[cm].rank) mejorIdx[cm] = { i: m, rank: rk };
     }
 
     // Recolectar updates en batches por fila (filas adyacentes podrían
@@ -379,6 +388,9 @@ function sincronizarHojaAseos() {
       var r   = mDatos[i];
       var cod = String(r[0]);
       if (!cod) continue;
+      // Solo la mejor fila por código (evita que la suite vieja cancelada
+      // pise a la suite nueva confirmada cuando un huésped se mueve).
+      if (mejorIdx[cod] && mejorIdx[cod].i !== i) continue;
 
       var checkinStr  = mDisp[i][0] || fechaToStr(r[3]);
       var checkoutStr = mDisp[i][1] || fechaToStr(r[4]);
@@ -424,8 +436,10 @@ function sincronizarHojaAseos() {
         var stayKey = (String(r[1]||"").trim() || String(r[2]||"").trim()) + "|" + checkoutStr;
         if (existeStay[stayKey]) continue;
         existeStay[stayKey] = true;
-        var estado = estadoMaster === "Cancelada"  ? "Cancelado"  :
-                     estadoMaster === "Finalizado" ? "Completado" : "Pendiente";
+        // No crear filas canceladas: si la reserva ya llega cancelada, no
+        // tiene sentido como aseo (mantiene la hoja limpia).
+        if (estadoMaster === "Cancelada") continue;
+        var estado = estadoMaster === "Finalizado" ? "Completado" : "Pendiente";
         var tsNew = estado === "Completado" ?
           Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm") : "";
         nuevas.push([
@@ -463,10 +477,22 @@ function sincronizarHojaAseos() {
       hoja.getRange(fi, 4, nuevas.length, 2).setNumberFormat("@");
       hoja.getRange(fi, 9, nuevas.length, 1).setNumberFormat("$#,##0");
       for (var i = 0; i < nuevas.length; i++) {
-        var bgN = nuevas[i][7] === "Completado" ? "#e8f5e9" :
-                  nuevas[i][7] === "Cancelado"  ? "#fff3f3" : "#f8f9fa";
+        var bgN = nuevas[i][7] === "Completado" ? "#e8f5e9" : "#f8f9fa";
         hoja.getRange(fi+i, 1, 1, 13).setBackground(bgN).setFontFamily("Arial").setFontSize(10);
       }
+    }
+
+    // BARRIDO FINAL: eliminar filas canceladas para mantener la hoja limpia.
+    // Se conservan Pendiente (las ve la app) y Completado (historial). Los
+    // cancelados ya no aportan nada operativo.
+    var totalRows = hoja.getLastRow();
+    if (totalRows > 1) {
+      var estCol = hoja.getRange(2, 8, totalRows - 1, 1).getValues();
+      var delRows = [];
+      for (var d = 0; d < estCol.length; d++) {
+        if (String(estCol[d][0]).trim() === "Cancelado") delRows.push(d + 2);
+      }
+      for (var dd = delRows.length - 1; dd >= 0; dd--) hoja.deleteRow(delRows[dd]);
     }
   } finally {
     try { lock.releaseLock(); } catch(e) {}
