@@ -1806,12 +1806,15 @@ function agregarAdmin() {
 function crearTriggersAutomaticos() {
   var triggers = ScriptApp.getProjectTriggers();
   for (var t = 0; t < triggers.length; t++) ScriptApp.deleteTrigger(triggers[t]);
+  // Sincronización diaria garantizada a las 10:00 AM (que las aseadoras
+  // tengan el día actualizado en la mañana) + cada 6h para frescura.
+  ScriptApp.newTrigger("sincronizarCalendarios").timeBased().atHour(10).everyDays(1).create();
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().everyHours(6).create();
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
   ScriptApp.newTrigger("notificarAdminAsignacionesPendientes").timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger("recuperarLinksVideos").timeBased().atHour(3).everyDays(1).create();
-  getSS().toast("Triggers creados (Airbnb 6h · Calendar 2h · Auto-completar 10PM · Admin pendientes 7AM · Video links 3AM)", "Triggers", 6);
+  getSS().toast("Triggers creados (Airbnb 10AM + cada 6h · Calendar 2h · Auto-completar 10PM · Admin 7AM · Video links 3AM)", "Triggers", 6);
 }
 
 
@@ -1852,6 +1855,12 @@ function getAllAseos() {
       if (!cod) continue;
       var estado = String(r[7] || "").trim();
       if (estado === "Cancelado") continue;
+      // "Todos los Aseos" es SOLO historial: tomamos completados y aseos
+      // manuales (MAN-). Ignoramos pendientes viejos del iCal — esos viven
+      // en el master. Así evitamos que una reserva movida de propiedad
+      // aparezca duplicada (la fila vieja con el mismo código).
+      var esManual = cod.indexOf("MAN") === 0;
+      if (estado !== "Completado" && !esManual) continue;
       var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
       var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
       upsert({
@@ -1905,7 +1914,16 @@ function getAllAseos() {
     }
   }
 
-  return result;
+  // Red de seguridad: ningún CÓDIGO debe aparecer dos veces (si una reserva
+  // se movió de propiedad conservando el código, evita que la tarjeta abra
+  // la versión vieja). Gana la mejor (completado/manual/master vigente).
+  var porCod = {}, finales = [];
+  for (var k = 0; k < result.length; k++) {
+    var c = result[k].codigo;
+    if (porCod[c] === undefined) { porCod[c] = finales.length; finales.push(result[k]); }
+    else if (_scoreAseo(result[k]) > _scoreAseo(finales[porCod[c]])) finales[porCod[c]] = result[k];
+  }
+  return finales;
 }
 
 // Puntaje para decidir qué fila duplicada conservar (mayor = mejor)
