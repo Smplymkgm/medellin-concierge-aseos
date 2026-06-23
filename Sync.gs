@@ -480,11 +480,15 @@ function sincronizarHojaAseos() {
     }
     if (hoja.getLastRow() < 2) return;
 
-    var rango = hoja.getRange(2, 1, hoja.getLastRow()-1, 8).getValues();
+    var rango = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
     var delRows = [];
     for (var i = 0; i < rango.length; i++) {
-      var cod = String(rango[i][0] || "").trim();
-      var est = String(rango[i][7] || "").trim();
+      var cod = String(rango[i][0]  || "").trim();
+      var est = String(rango[i][7]  || "").trim();
+      var fechaCompletado = String(rango[i][12] || "").trim();  // col M (Completado)
+      // PROTECCIÓN DE PAGO: una fila con fecha de completado es un aseo hecho
+      // = un pago que se debe → NUNCA se borra, aunque su Estado haya cambiado.
+      if (fechaCompletado) continue;
       // Conservar completados y aseos manuales (MAN-) aunque estén pendientes.
       if (est === "Completado") continue;
       if (cod.indexOf("MAN") === 0) continue;
