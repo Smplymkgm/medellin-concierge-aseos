@@ -35,11 +35,16 @@ function sincronizarCalendarios() {
     configurarEncabezados(hoja);
     aplicarDropdowns(hoja);
 
-    // Recolectar reservas activas del iCal — dedupe por (idProp, codigo)
+    // Recolectar reservas activas del iCal. Dedup en DOS niveles para que el
+    // master nunca muestre filas repetidas:
+    //   • por código (HM…/UID son únicos globalmente en Airbnb), y
+    //   • por estadía = propiedad + checkout (una sola limpieza por salida;
+    //     cubre la misma estadía publicada por Airbnb y Booking a la vez).
     // FETCH PRIMERO, luego decidimos si limpiar o no. Esto evita que una
     // caída temporal de Airbnb borre el master sheet entero.
     var reservas = [];
-    var vistas   = {};
+    var vistosCod  = {};   // codigo -> true
+    var vistosStay = {};   // (idProp|propiedad)+"|"+checkout -> true
     var propsConIcal = 0;
     var fetchesExitosos = 0;
     var propFetchOk = {};  // id de propiedad -> true si su iCal respondió (HTTP 200) este run
@@ -51,9 +56,12 @@ function sincronizarCalendarios() {
       if (lista && lista.length > 0) fetchesExitosos++;
       for (var k = 0; k < lista.length; k++) {
         var r = lista[k];
-        var key = (r.id || "") + ":" + (r.codigo || "");
-        if (vistas[key]) continue;
-        vistas[key] = true;
+        var kc = String(r.codigo || "");
+        var ks = String(r.id || r.propiedad || "") + "|" + String(r.checkout || "");
+        if (kc && vistosCod[kc]) continue;       // mismo código ya visto
+        if (vistosStay[ks])      continue;       // misma estadía (propiedad+checkout) ya vista
+        if (kc) vistosCod[kc] = true;
+        vistosStay[ks] = true;
         reservas.push(r);
       }
     }
@@ -91,7 +99,8 @@ function sincronizarCalendarios() {
 
     var setIcal = {};
     for (var i = 0; i < reservas.length; i++) setIcal[reservas[i].codigo] = true;
-    var cancelaciones = [];
+    var cancelaciones = [];  // pendientes ausentes que PRESERVAMOS (no son cancelación aún)
+    var removidas = 0;
 
     function preservar(cod, est) {
       var g = guardado[cod];
@@ -106,24 +115,26 @@ function sincronizarCalendarios() {
       if (setIcal[cod]) continue;                // presente en el feed → la re-escribe escribirReservas
       var est = guardado[cod].estado;
 
-      // Ya Finalizada/Cancelada → preservar tal cual.
-      if (est === "Finalizado" || est === "Cancelada") { preservar(cod, est); continue; }
+      // El master SOLO lleva pendientes. Finalizada (vive en "Todos los Aseos")
+      // o Cancelada → se descarta del master (no se reescribe).
+      if (est === "Finalizado" || est === "Cancelada") { removidas++; continue; }
 
-      // Solo evaluamos cancelación de las que estaban activas.
+      // Estados no-activos raros → descartar también (el master es solo pendientes).
       var estabaActiva = (est === "Confirmada" || est === "Pendiente" || est === "");
-      if (!estabaActiva) { preservar(cod, est); continue; }
+      if (!estabaActiva) { removidas++; continue; }
 
-      // (1) ¿la propiedad respondió su feed?
+      // (1) ¿la propiedad respondió su feed? Si no, no sabemos nada → preservar.
       var idP = guardado[cod].idProp;
       var propRespondio = !idP || propFetchOk[idP];  // sin idProp (manual/legacy) → no tocar
       if (!propRespondio) { preservar(cod, est || "Confirmada"); continue; }
 
-      // (2) ¿es a futuro? Si el checkout ya pasó, no es cancelación.
+      // (2) ¿es a futuro? Si el checkout ya pasó, se cayó del feed sola
+      //     (no es cancelación; la maneja autoCompletarAseosPasados) → descartar.
       var coDate = fechaADate(guardado[cod].checkout);
       var esFutura = coDate && coDate >= hoy0;
-      if (!esFutura) { preservar(cod, est || "Confirmada"); continue; }
+      if (!esFutura) { removidas++; continue; }
 
-      // (3) debounce: solo cancelar si lleva ≥2 syncs ausente.
+      // (3) debounce: solo quitar si lleva ≥2 syncs ausente; si no, preservar.
       var desde = ausentes[cod];
       if (!desde) {                              // primera vez ausente → registrar y esperar
         nuevosAusentes[cod] = ahoraMs;
@@ -136,19 +147,16 @@ function sincronizarCalendarios() {
         continue;
       }
 
-      // Cumple las 3 → cancelar de verdad (y se sale del registro de ausentes).
-      cancelaciones.push({
-        codigo: cod, idProp: idP || "", propiedad: guardado[cod].propiedad || "",
-        checkin: guardado[cod].checkin || "", checkout: guardado[cod].checkout || "",
-        noches: 0, estado: "Cancelada", precio: 0,
-        acceso: guardado[cod].acceso || "", empleadaAuto: "",
-      });
+      // Cumple las 3 → desaparición real. El master solo lleva pendientes, así
+      // que la quitamos (no se reescribe) y sale del registro de ausentes.
+      removidas++;
     }
     guardarAusentesSoftCancel(nuevosAusentes);
 
     escribirReservas(hoja, reservas, guardado);
 
-    // Escribir cancelaciones/finalizadas preservadas debajo
+    // Escribir debajo las pendientes ausentes que PRESERVAMOS (glitch de feed o
+    // dentro del periodo de gracia). Son pendientes vigentes, no cancelaciones.
     if (cancelaciones.length > 0) {
       var fiC = hoja.getLastRow() + 1;
       var filasC = cancelaciones.map(function(r) {
@@ -180,8 +188,7 @@ function sincronizarCalendarios() {
     sincronizarHojaAseos();
 
     SpreadsheetApp.getActiveSpreadsheet().toast(
-      "✅ " + reservas.length + " reservas · " +
-      cancelaciones.filter(function(c){return c.estado==='Cancelada';}).length + " canceladas",
+      "✅ " + reservas.length + " reservas pendientes · " + removidas + " removidas (completadas/canceladas)",
       "Airbnb Sync", 5);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
