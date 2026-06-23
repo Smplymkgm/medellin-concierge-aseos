@@ -33,11 +33,23 @@ CI hace el resto:
 - `Code.gs`, `Sync.gs`, `appsscript.json` → `deploy-appsscript.yml` → `clasp push` + `clasp deploy --deploymentId <pinned>` (URL del backend nunca cambia)
 - Cualquier cambio en `main` → `ci.yml` valida sintaxis `.gs` + parses JSX
 
+## Lógica de sincronización (robustez)
+
+`sincronizarCalendarios` (iCal Airbnb → Sheets) sigue estas reglas para no perder ni ensuciar datos:
+
+- **Soft-cancel seguro**: una reserva ausente del feed solo se marca cancelada (se quita del master) si (1) su propiedad respondió el iCal, (2) es a futuro, y (3) lleva ≥2 syncs ausente (debounce ~5h vía ScriptProperties). Absorbe feeds parciales/caídas de Airbnb. Los falsos cancelados se auto-recuperan en el siguiente sync.
+- **Master = solo pendientes**: "Todas las Reservas" lleva solo reservas vigentes. Completados viven en "Todos los Aseos"; cancelados/finalizados no se escriben en el master.
+- **Sin duplicados**: dedup por código (único en Airbnb) y por estadía (propiedad + checkout).
+- **Limpieza garantizada**: `limpiarDatos` quita el filtro y usa `clearContent` sobre toda la cuadrícula (no falla con filtros/rangos protegidos).
+- **Protección de pago**: toda fila en "Todos los Aseos" con fecha de completado (col M) nunca se borra, aunque cambie su Estado.
+
+Menú → Setup (avanzado) → **Recuperar reservas mal canceladas** restaura cancelados falsos a mano si hace falta.
+
 ## Triggers programados (Apps Script)
 
 | Función | Frecuencia |
 |---|---|
-| `sincronizarCalendarios` | Cada 6 h |
+| `sincronizarCalendarios` | Cada 6 h + 10 AM diario |
 | `sincronizarGoogleCalendar` | Cada 2 h |
 | `autoCompletarAseosPasados` | 10 PM diario |
 
@@ -54,21 +66,7 @@ CI hace el resto:
 
 ## Documentación
 
-Toda la arquitectura, decisiones, roadmaps y handoff están en [`docs/`](docs/):
-
-- [HANDOFF.md](docs/HANDOFF.md) — entrega rápida para alguien que tome el proyecto cold
-- [CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) — estado actual
-- [TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) — estado deseado (sin SaaS)
-- [RESPONSIBILITIES_MAP.md](docs/RESPONSIBILITIES_MAP.md) — quién hace qué hoy
-- [APPSCRIPT_AUDIT.md](docs/APPSCRIPT_AUDIT.md) — categorización función por función
-- [GITHUB_FIRST_ROADMAP.md](docs/GITHUB_FIRST_ROADMAP.md) — flujo de desarrollo
-- [CICD_ROADMAP.md](docs/CICD_ROADMAP.md) — workflows y secretos
-- [APPSCRIPT_REDUCTION_PLAN.md](docs/APPSCRIPT_REDUCTION_PLAN.md) — fases para reducir dependencia
-- [TECHNICAL_DEBT.md](docs/TECHNICAL_DEBT.md) — inventario priorizado
-- [RISK_ANALYSIS.md](docs/RISK_ANALYSIS.md) — riesgos identificados y mitigaciones
-- [IMPLEMENTATION_ORDER.md](docs/IMPLEMENTATION_ORDER.md) — orden de pasos
-- [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) — schema Postgres (futuro lejano)
-- [MIGRATION_ROADMAP.md](docs/MIGRATION_ROADMAP.md) — fases largo plazo
+Arquitectura, decisiones, roadmaps y handoff en [`docs/`](docs/) — empieza por [HANDOFF.md](docs/HANDOFF.md) (entrega cold) y [CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) (estado actual).
 
 ## Cuentas + credenciales
 
