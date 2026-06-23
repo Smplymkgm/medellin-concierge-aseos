@@ -387,14 +387,33 @@ function configurarEncabezados(hoja) {
 }
 
 function limpiarDatos(hoja) {
+  // Un filtro o rango protegido hace que deleteRows lance error; si eso pasaba,
+  // las filas viejas (duplicados, completados, cancelados) sobrevivían debajo
+  // de los datos frescos. Por eso primero quitamos el filtro y luego limpiamos
+  // con clearContent sobre TODO el rango bajo el encabezado, que nunca falla.
   try {
-    var last   = hoja.getLastRow();
-    var frozen = hoja.getFrozenRows();
-    var first  = frozen + 1;
+    var filtro = hoja.getFilter();
+    if (filtro) filtro.remove();
+  } catch(e) { Logger.log("limpiarDatos filtro: " + e.message); }
+
+  var frozen = hoja.getFrozenRows() || 1;
+  var first  = frozen + 1;
+
+  // 1) Borrado por contenido (garantizado): limpia hasta la última fila REAL
+  //    de la cuadrícula, no solo hasta getLastRow().
+  try {
+    var maxRows = hoja.getMaxRows();
+    var maxCols = hoja.getMaxColumns();
+    if (maxRows >= first) {
+      hoja.getRange(first, 1, maxRows - frozen, maxCols).clearContent().clearFormat();
+    }
+  } catch(e) { Logger.log("limpiarDatos clear: " + e.message); }
+
+  // 2) Además intentamos eliminar las filas sobrantes (deja la hoja compacta).
+  try {
+    var last = hoja.getLastRow();
     if (last >= first) hoja.deleteRows(first, last - frozen);
-  } catch(e) {
-    Logger.log("limpiarDatos: " + e.message);
-  }
+  } catch(e) { Logger.log("limpiarDatos delete: " + e.message); }
 }
 
 function escribirReservas(hoja, reservas, guardado) {
