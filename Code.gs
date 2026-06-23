@@ -1590,6 +1590,7 @@ function onOpen() {
     .addItem("Convertir links de video a HYPERLINK",         "convertirVideosAHyperlink")
     .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
     .addItem("Normalizar estados Cancelado + color rojo",    "normalizarEstadosCancelados")
+    .addItem("Recuperar reservas mal canceladas",            "recuperarCanceladosFalsos")
     .addItem("Eliminar aseos duplicados",                    "eliminarAseosDuplicados")
     .addItem("Actualizar precios de propiedades",            "actualizarPreciosPropiedades");
 

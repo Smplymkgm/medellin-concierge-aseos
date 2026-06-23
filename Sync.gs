@@ -42,10 +42,12 @@ function sincronizarCalendarios() {
     var vistas   = {};
     var propsConIcal = 0;
     var fetchesExitosos = 0;
+    var propFetchOk = {};  // id de propiedad -> true si su iCal respondió (HTTP 200) este run
     for (var p of propiedades) {
       if (!p.icalUrl) continue;
       propsConIcal++;
       var lista = obtenerReservasDeICal(p);
+      if (lista.fetchOk) propFetchOk[p.id] = true;
       if (lista && lista.length > 0) fetchesExitosos++;
       for (var k = 0; k < lista.length; k++) {
         var r = lista[k];
@@ -69,43 +71,80 @@ function sincronizarCalendarios() {
       return;
     }
 
-    // Soft-cancel: lo que estaba guardado y no llegó del iCal queda Cancelada
-    // (solo si estaba Confirmada/Pendiente; las ya Finalizadas/Canceladas se preservan)
+    // Soft-cancel robusto: una reserva guardada que NO llegó en el iCal solo
+    // se marca Cancelada si se cumplen las 3 condiciones. En cualquier otro
+    // caso se PRESERVA tal cual (toda fila de 'guardado' que no esté en el feed
+    // debe re-escribirse aquí, porque limpiarDatos ya vació la hoja).
+    //   1) La propiedad SÍ respondió su iCal este run (si su feed falló, la
+    //      ausencia no significa nada → no tocar).
+    //   2) La reserva es a FUTURO. Airbnb solo exporta fechas futuras: una
+    //      reserva cuyo checkout ya pasó se cae del feed sola (no es cancelación;
+    //      la maneja autoCompletarAseosPasados).
+    //   3) Lleva ≥2 syncs consecutivos ausente (debounce/gracia ~5h). Absorbe
+    //      feeds parciales y retrasos de Airbnb (2–4h). El "ausente desde" se
+    //      guarda en ScriptProperties, sin tocar el esquema de la hoja.
+    var hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+    var ahoraMs   = Date.now();
+    var GRACIA_MS = 5 * 60 * 60 * 1000;          // ~5h (< ciclo de 6h)
+    var ausentes  = leerAusentesSoftCancel();    // { codigo: epochMs }
+    var nuevosAusentes = {};
+
     var setIcal = {};
     for (var i = 0; i < reservas.length; i++) setIcal[reservas[i].codigo] = true;
     var cancelaciones = [];
-    for (var cod in guardado) {
-      if (setIcal[cod]) continue;
-      var est = guardado[cod].estado;
-      if (est === "Confirmada" || est === "Pendiente" || est === "") {
-        cancelaciones.push({
-          codigo: cod,
-          idProp: "",
-          propiedad: "",
-          checkin:  guardado[cod].checkin  || "",
-          checkout: guardado[cod].checkout || "",
-          noches:   0,
-          estado:   "Cancelada",
-          precio:   0,
-          acceso:   guardado[cod].acceso  || "",
-          empleadaAuto: "",
-        });
-      } else if (est === "Finalizado" || est === "Cancelada") {
-        // Preservar tal cual
-        cancelaciones.push({
-          codigo:   cod,
-          idProp:   "",
-          propiedad: "",
-          checkin:  guardado[cod].checkin  || "",
-          checkout: guardado[cod].checkout || "",
-          noches:   0,
-          estado:   est,
-          precio:   0,
-          acceso:   guardado[cod].acceso || "",
-          empleadaAuto: "",
-        });
-      }
+
+    function preservar(cod, est) {
+      var g = guardado[cod];
+      cancelaciones.push({
+        codigo: cod, idProp: g.idProp || "", propiedad: g.propiedad || "",
+        checkin: g.checkin || "", checkout: g.checkout || "", noches: 0,
+        estado: est, precio: 0, acceso: g.acceso || "", empleadaAuto: "",
+      });
     }
+
+    for (var cod in guardado) {
+      if (setIcal[cod]) continue;                // presente en el feed → la re-escribe escribirReservas
+      var est = guardado[cod].estado;
+
+      // Ya Finalizada/Cancelada → preservar tal cual.
+      if (est === "Finalizado" || est === "Cancelada") { preservar(cod, est); continue; }
+
+      // Solo evaluamos cancelación de las que estaban activas.
+      var estabaActiva = (est === "Confirmada" || est === "Pendiente" || est === "");
+      if (!estabaActiva) { preservar(cod, est); continue; }
+
+      // (1) ¿la propiedad respondió su feed?
+      var idP = guardado[cod].idProp;
+      var propRespondio = !idP || propFetchOk[idP];  // sin idProp (manual/legacy) → no tocar
+      if (!propRespondio) { preservar(cod, est || "Confirmada"); continue; }
+
+      // (2) ¿es a futuro? Si el checkout ya pasó, no es cancelación.
+      var coDate = fechaADate(guardado[cod].checkout);
+      var esFutura = coDate && coDate >= hoy0;
+      if (!esFutura) { preservar(cod, est || "Confirmada"); continue; }
+
+      // (3) debounce: solo cancelar si lleva ≥2 syncs ausente.
+      var desde = ausentes[cod];
+      if (!desde) {                              // primera vez ausente → registrar y esperar
+        nuevosAusentes[cod] = ahoraMs;
+        preservar(cod, est || "Confirmada");
+        continue;
+      }
+      if (ahoraMs - desde < GRACIA_MS) {         // aún en periodo de gracia → seguir esperando
+        nuevosAusentes[cod] = desde;
+        preservar(cod, est || "Confirmada");
+        continue;
+      }
+
+      // Cumple las 3 → cancelar de verdad (y se sale del registro de ausentes).
+      cancelaciones.push({
+        codigo: cod, idProp: idP || "", propiedad: guardado[cod].propiedad || "",
+        checkin: guardado[cod].checkin || "", checkout: guardado[cod].checkout || "",
+        noches: 0, estado: "Cancelada", precio: 0,
+        acceso: guardado[cod].acceso || "", empleadaAuto: "",
+      });
+    }
+    guardarAusentesSoftCancel(nuevosAusentes);
 
     escribirReservas(hoja, reservas, guardado);
 
@@ -114,14 +153,17 @@ function sincronizarCalendarios() {
       var fiC = hoja.getLastRow() + 1;
       var filasC = cancelaciones.map(function(r) {
         var g = guardado[r.codigo] || {};
-        return [r.codigo, "", "", r.checkin, r.checkout, 0,
+        return [r.codigo, r.idProp || "", r.propiedad || "", r.checkin, r.checkout, 0,
                 r.estado, g.empleada || "", 0, g.notas || "", g.acceso || "",
                 g.eventId || "", ""];
       });
       hoja.getRange(fiC, 1, filasC.length, 13).setValues(filasC);
       hoja.getRange(fiC, 4, filasC.length, 2).setNumberFormat("@");
       for (var c = 0; c < filasC.length; c++) {
-        var bg = filasC[c][6] === "Finalizado" ? "#e8f5e9" : "#fff3f3";
+        var estC = filasC[c][6];
+        var bg = estC === "Finalizado" ? "#e8f5e9"
+               : estC === "Cancelada"  ? "#fff3f3"
+               : "#ffffff";  // preservada (feed no respondió): apariencia normal
         hoja.getRange(fiC + c, 1, 1, 13).setBackground(bg).setFontFamily("Arial").setFontSize(10);
       }
     }
@@ -146,6 +188,69 @@ function sincronizarCalendarios() {
   }
 }
 
+// ------------------------------------------------------------
+// Debounce del soft-cancel: registro de códigos ausentes del feed.
+// Se guarda en ScriptProperties (no toca el esquema de la hoja). El mapa solo
+// retiene los códigos que siguen pendientes de confirmar cancelación; en cada
+// run se reescribe completo, así los que volvieron o ya se cancelaron salen.
+// ------------------------------------------------------------
+var SOFTCANCEL_PROP_KEY = "softcancel_ausentes";
+
+function leerAusentesSoftCancel() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(SOFTCANCEL_PROP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function guardarAusentesSoftCancel(mapa) {
+  try {
+    PropertiesService.getScriptProperties()
+      .setProperty(SOFTCANCEL_PROP_KEY, JSON.stringify(mapa || {}));
+  } catch(e) {
+    Logger.log("guardarAusentesSoftCancel: " + e.message);
+  }
+}
+
+// ------------------------------------------------------------
+// Recuperación one-shot: restaura a "Confirmada" toda reserva del master que
+// esté "Cancelada" pero cuyo código SÍ aparece en los iCal actuales (= falso
+// cancelado por el bug viejo). Las canceladas de verdad no están en el feed,
+// así que se quedan como están. Correr desde el editor o el menú una vez.
+// ------------------------------------------------------------
+function recuperarCanceladosFalsos() {
+  var ss     = SpreadsheetApp.getActiveSpreadsheet();
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  if (!master || master.getLastRow() < 2) { ss.toast("Sin reservas", "Recuperar", 4); return; }
+
+  // Códigos presentes en los iCal actuales.
+  var enFeed = {};
+  var props  = getPropiedades();
+  for (var p of props) {
+    if (!p.icalUrl) continue;
+    var lista = obtenerReservasDeICal(p);
+    for (var k = 0; k < lista.length; k++) enFeed[lista[k].codigo] = true;
+  }
+
+  var datos = master.getRange(2, 1, master.getLastRow()-1, 7).getValues();
+  var ausentes = leerAusentesSoftCancel();
+  var restauradas = 0;
+  for (var i = 0; i < datos.length; i++) {
+    var cod = String(datos[i][0]).trim();
+    var est = String(datos[i][6]).trim();
+    if (est !== "Cancelada") continue;
+    if (!enFeed[cod]) continue;                 // no está en el feed → cancelación real, no tocar
+    var fila = i + 2;
+    master.getRange(fila, 7).setValue("Confirmada");
+    master.getRange(fila, 1, 1, 13).setBackground(i % 2 === 0 ? "#f8f9fa" : "#ffffff");
+    delete ausentes[cod];                        // limpiar del debounce
+    restauradas++;
+  }
+  guardarAusentesSoftCancel(ausentes);
+  ss.toast("✅ " + restauradas + " reservas restauradas a Confirmada", "Recuperar", 6);
+  Logger.log("recuperarCanceladosFalsos: " + restauradas + " restauradas.");
+}
+
 // ============================================================
 // iCAL — fetch + parse
 // ============================================================
@@ -156,6 +261,7 @@ function obtenerReservasDeICal(prop) {
            : (prop.icalUrl ? [prop.icalUrl] : []);
   var todas = [];
   var vistos = {};  // dedup por código entre feeds de la misma propiedad
+  var algunFetchOk = false;  // ¿al menos un feed respondió HTTP 200?
   for (var u = 0; u < urls.length; u++) {
     var url = String(urls[u] || "").trim();
     if (!url) continue;
@@ -165,6 +271,7 @@ function obtenerReservasDeICal(prop) {
         Logger.log("iCal " + prop.nombre + " HTTP " + r.getResponseCode() + ": " + url);
         continue;
       }
+      algunFetchOk = true;
       var reservas = parsearICal(r.getContentText(), prop);
       for (var k = 0; k < reservas.length; k++) {
         var cod = reservas[k].codigo;
@@ -176,6 +283,7 @@ function obtenerReservasDeICal(prop) {
       Logger.log("Error iCal " + prop.nombre + " (" + url + "): " + e.message);
     }
   }
+  todas.fetchOk = algunFetchOk;
   return todas;
 }
 
@@ -246,6 +354,8 @@ function leerDatosGuardados(hoja) {
     var f = datos[i];
     var c = String(f[0]); if (!c) continue;
     g[c] = {
+      idProp:    String(f[1] || ""),
+      propiedad: String(f[2] || ""),
       empleada: String(f[7] || ""),
       estado:   String(f[6] || ""),
       notas:    String(f[9] || ""),
