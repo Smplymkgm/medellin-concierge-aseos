@@ -177,10 +177,12 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                           Cambiar fecha
                         </button>
                       )}
-                      {a.asignada && onFinalizarSinForm && (
+                      {onFinalizarSinForm && (
                         <button className="btn btn-ghost" onClick={() => onFinalizarSinForm(a)}
-                          title="Marca como completado sin llenar el form (para aseos viejos)">
-                          Finalizar sin form
+                          title={a.asignada
+                            ? 'Marca como completado sin llenar el form (para aseos viejos)'
+                            : 'Marca como hecho sin asignar — queda "No asignado", no suma a ningún pago'}>
+                          {a.asignada ? 'Finalizar sin form' : 'Completar sin asignar'}
                         </button>
                       )}
                     </>}

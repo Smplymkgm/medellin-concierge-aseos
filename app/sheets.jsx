@@ -360,12 +360,13 @@ function AgregarAseoSheet({ open, onClose, onAdd }) {
   const [precio, setPrecio] = useStateS(() => firstProp().precio || 0);
   const [notas, setNotas] = useStateS('');
   const [query, setQuery] = useStateS('');
+  const [codigo, setCodigo] = useStateS('');
 
   useEffectS(() => {
     if (open) {
       const fp = firstProp();
       setPropId(fp.id); setAsignada(null);
-      setTipo('Full'); setPrecio(fp.precio || 0); setNotas(''); setQuery('');
+      setTipo('Full'); setPrecio(fp.precio || 0); setNotas(''); setQuery(''); setCodigo('');
       var t = new Date();
       setFecha(t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0'));
     }
@@ -385,7 +386,7 @@ function AgregarAseoSheet({ open, onClose, onAdd }) {
   }
 
   const footer = (
-    <button className="btn btn-primary btn-block btn-lg" onClick={() => onAdd({ propId, fecha, asignada, tipo, precio: finalPrecio, notas })}>
+    <button className="btn btn-primary btn-block btn-lg" onClick={() => onAdd({ propId, fecha, asignada, tipo, precio: finalPrecio, notas, codigo: codigo.trim() })}>
       Agregar aseo
     </button>
   );
@@ -454,9 +455,16 @@ function AgregarAseoSheet({ open, onClose, onAdd }) {
           value={fmtCOP(finalPrecio)} onChange={e => setPrecio(parseInt(e.target.value.replace(/\D/g,'')) || 0)} />
       </div>
 
-      <div className="form-group" style={{ marginBottom: 0 }}>
+      <div className="form-group">
         <label className="label">Notas (opcional)</label>
         <input type="text" className="text-input" placeholder="Una línea" value={notas} onChange={e => setNotas(e.target.value)} />
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="label">Código de reserva (opcional)</label>
+        <input type="text" className="text-input" placeholder="Vacío = Manual automático · o pon el código (ej. HMK2DZ3XHK)"
+          value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} />
+        <div className="caption sec" style={{ marginTop: 4 }}>Déjalo vacío para un código "MAN-…" automático, o escribe el código de la reserva para ubicarlo mejor.</div>
       </div>
     </Sheet>
   );

@@ -128,11 +128,12 @@ function sincronizarCalendarios() {
       var propRespondio = !idP || propFetchOk[idP];  // sin idProp (manual/legacy) → no tocar
       if (!propRespondio) { preservar(cod, est || "Confirmada"); continue; }
 
-      // (2) ¿es a futuro? Si el checkout ya pasó, se cayó del feed sola
-      //     (no es cancelación; la maneja autoCompletarAseosPasados) → descartar.
+      // (2) ¿es a futuro? Si el checkout ya pasó, Airbnb la quita del feed sola.
+      //     Eso NO significa que se canceló: el aseo pudo no haberse hecho. Lo
+      //     PRESERVAMOS como pendiente (atrasado) hasta que se complete a mano.
       var coDate = fechaADate(guardado[cod].checkout);
       var esFutura = coDate && coDate >= hoy0;
-      if (!esFutura) { removidas++; continue; }
+      if (!esFutura) { preservar(cod, est || "Confirmada"); continue; }
 
       // (3) debounce: solo quitar si lleva ≥2 syncs ausente; si no, preservar.
       var desde = ausentes[cod];
@@ -485,13 +486,16 @@ function sincronizarHojaAseos() {
     for (var i = 0; i < rango.length; i++) {
       var cod = String(rango[i][0]  || "").trim();
       var est = String(rango[i][7]  || "").trim();
+      var marca = String(rango[i][11] || "").trim();           // col L (marca MANUAL)
       var fechaCompletado = String(rango[i][12] || "").trim();  // col M (Completado)
       // PROTECCIÓN DE PAGO: una fila con fecha de completado es un aseo hecho
       // = un pago que se debe → NUNCA se borra, aunque su Estado haya cambiado.
       if (fechaCompletado) continue;
-      // Conservar completados y aseos manuales (MAN-) aunque estén pendientes.
+      // Conservar completados y aseos manuales (MAN- o marca "MANUAL") aunque
+      // estén pendientes.
       if (est === "Completado") continue;
       if (cod.indexOf("MAN") === 0) continue;
+      if (marca === "MANUAL") continue;
       delRows.push(i + 2);
     }
     for (var d = delRows.length - 1; d >= 0; d--) hoja.deleteRow(delRows[d]);

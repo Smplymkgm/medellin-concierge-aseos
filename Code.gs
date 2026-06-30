@@ -421,8 +421,13 @@ function handleCompletarAseo(body) {
   var reposicionJson     = body.reposicion     ? JSON.stringify(body.reposicion)     : "";
   var funcionamientoJson = body.funcionamiento ? JSON.stringify(body.funcionamiento) : "";
   var reporte   = String(body.reporte   || "").trim();
+  // Completar SIN aseadora (admin): el aseo se marca hecho pero queda como
+  // "No asignado", sin precio y sin sumar a ningún pago.
+  var sinAsignar = body.sinAsignar === true || (!nombre && body.adminSinAsignar === true);
+  var aseadoraFinal = sinAsignar ? "No asignado" : nombre;
 
-  if (!codigo || !nombre) return respond(false, null, "Codigo y nombre requeridos");
+  if (!codigo) return respond(false, null, "Codigo requerido");
+  if (!sinAsignar && !nombre) return respond(false, null, "Codigo y nombre requeridos");
 
   var lock = LockService.getScriptLock();
   try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado, intenta de nuevo"); }
@@ -442,7 +447,7 @@ function handleCompletarAseo(body) {
     var fila = -1, propiedadAseo = "", checkoutStr = "";
     for (var i = 0; i < datos.length; i++) {
       if (String(datos[i][0]) !== codigo) continue;
-      if (String(datos[i][6]).trim() && String(datos[i][6]).trim() !== nombre)
+      if (!sinAsignar && String(datos[i][6]).trim() && String(datos[i][6]).trim() !== nombre)
         return respond(false, null, "No autorizado");
       fila = i + 2;
       propiedadAseo = String(datos[i][2]);
@@ -466,7 +471,7 @@ function handleCompletarAseo(body) {
       }
       if (!resv) return respond(false, null, "Aseo no encontrado");
       var asignadaM = String(resv[7] || "").trim();
-      if (asignadaM && asignadaM !== nombre) return respond(false, null, "No autorizado");
+      if (!sinAsignar && asignadaM && asignadaM !== nombre) return respond(false, null, "No autorizado");
 
       var checkoutNew = fechaADate(checkoutStr);
       if (!checkoutNew)      return respond(false, null, "Fecha invalida");
@@ -476,7 +481,7 @@ function handleCompletarAseo(body) {
       propiedadAseo = String(resv[2] || "");
       hoja.appendRow([
         codigo, String(resv[1]||""), propiedadAseo, checkinStrN, checkoutStr,
-        Number(resv[5])||0, nombre, "Pendiente", Number(resv[8])||0,
+        Number(resv[5])||0, aseadoraFinal, "Pendiente", sinAsignar ? 0 : (Number(resv[8])||0),
         notas || String(resv[9]||""), String(resv[10]||""), "", ""
       ]);
       fila = hoja.getLastRow();
@@ -489,9 +494,10 @@ function handleCompletarAseo(body) {
     }
 
     var ahora = Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy HH:mm");
-    hoja.getRange(fila, 7).setValue(nombre);   // aseadora (asegura el completador)
+    hoja.getRange(fila, 7).setValue(aseadoraFinal);  // aseadora (o "No asignado")
     hoja.getRange(fila, 8).setValue("Completado");
     hoja.getRange(fila, 13).setValue(ahora);
+    if (sinAsignar) hoja.getRange(fila, 9).setValue(0);  // sin pago
     if (notas) hoja.getRange(fila, 10).setValue(notas);
 
     var rowValues = buildFormRow(body);
@@ -851,42 +857,44 @@ function sameDayDate(a, b) {
 // ADMIN — moverAseo
 // ============================================================
 
+// La FECHA DEL ASEO es independiente de la reserva. Mover un aseo a otro día
+// NO cambia el código ni las fechas de la reserva (esas solo cambian vía iCal).
+// Por eso NO tocamos el sheet (el sync lo revertiría): guardamos un override
+// {codigo: fecha} en ScriptProperties que sobrevive a los syncs y se aplica al
+// leer (getAllAseos). Quitar el override = volver a la fecha de la reserva.
+var ASEO_FECHA_PROP_KEY = "aseo_fecha_override";
+
+function leerFechaAseoOverride() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(ASEO_FECHA_PROP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function guardarFechaAseoOverride(mapa) {
+  try {
+    PropertiesService.getScriptProperties()
+      .setProperty(ASEO_FECHA_PROP_KEY, JSON.stringify(mapa || {}));
+  } catch(e) { Logger.log("guardarFechaAseoOverride: " + e.message); }
+}
+
 function handleMoverAseo(body) {
   var codigo     = String(body.codigo     || "").trim();
   var nuevaFecha = String(body.nuevaFecha || "").trim();
 
-  if (!codigo || !nuevaFecha) return respond(false, null, "Codigo y nuevaFecha requeridos");
+  if (!codigo || !nuevaFecha)  return respond(false, null, "Codigo y nuevaFecha requeridos");
   if (!fechaADate(nuevaFecha)) return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
 
-  var ss   = getSS();
-  var encontrado = false;
-
-  // PRIMARIO: master (pendientes). SECUNDARIO: aseos (completados/remanentes).
-  var master = ss.getSheetByName(CONFIG.hojaMaestra);
-  if (master && master.getLastRow() >= 2) {
-    var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-    for (var j = 0; j < mc.length; j++) {
-      if (String(mc[j][0]) === codigo) {
-        master.getRange(j+2, 5).setValue(nuevaFecha).setNumberFormat("@");
-        encontrado = true;
-        break;
-      }
-    }
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
+  try {
+    var mapa = leerFechaAseoOverride();
+    mapa[codigo] = nuevaFecha;          // solo la fecha del aseo; reserva intacta
+    guardarFechaAseoOverride(mapa);
+    return respond(true, null);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
   }
-
-  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
-  if (hoja && hoja.getLastRow() >= 2) {
-    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues();
-    for (var i = 0; i < datos.length; i++) {
-      if (String(datos[i][0]) !== codigo) continue;
-      hoja.getRange(i+2, 5).setValue(nuevaFecha).setNumberFormat("@");
-      encontrado = true;
-      break;
-    }
-  }
-
-  if (!encontrado) return respond(false, null, "Aseo no encontrado");
-  return respond(true, null);
 }
 
 // ============================================================
@@ -901,6 +909,7 @@ function handleAgregarAseo(body) {
   var precio     = Number(body.precio)    || 0;
   var notas      = String(body.notas      || "").trim();
   var acceso     = String(body.acceso     || "").trim();
+  var codigoUser = String(body.codigo     || "").trim().toUpperCase();  // código de reserva opcional
 
   if (!propiedad || !checkout) return respond(false, null, "Propiedad y fecha requeridas");
   if (!fechaADate(checkout))   return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
@@ -928,17 +937,24 @@ function handleAgregarAseo(body) {
     var hoja = ss.getSheetByName(CONFIG.hojaAseos);
     if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
 
-    // Código único basado en timestamp + 2 chars random — sin colisión
-    // ni dependencia del lastRow (que cambia con cada borrado/insert).
-    var ts  = Date.now().toString(36).toUpperCase();
-    var rnd = Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0");
-    var codigo = "MAN-" + ts + rnd;
+    // Código: si el admin puso el código de la reserva (p. ej. HM…) lo usamos
+    // para ubicarlo mejor; si no, generamos uno automático "MAN-…".
+    var codigo;
+    if (codigoUser) {
+      codigo = codigoUser;
+    } else {
+      var ts  = Date.now().toString(36).toUpperCase();
+      var rnd = Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0");
+      codigo = "MAN-" + ts + rnd;
+    }
 
+    // Col 12 = marca "MANUAL": hace que el aseo se muestre y se proteja del
+    // borrado del sync aunque su código no empiece con "MAN-".
     var fila = [
       codigo, idProp, propiedad,
       checkout, checkout, 0,
       aseadora, "Pendiente", precio,
-      notas, acceso, "", ""
+      notas, acceso, "MANUAL", ""
     ];
     hoja.appendRow(fila);
 
@@ -1466,6 +1482,12 @@ function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
 // ============================================================
 
 function autoCompletarAseosPasados() {
+  // DESACTIVADO a propósito: los aseos ya NO se completan automáticamente.
+  // Un aseo pasado y no completado debe quedarse visible como pendiente
+  // (atrasado) hasta que alguien lo complete a mano. Marcar algo como hecho
+  // sin verificación inflaba pagos y ocultaba aptos sin asear.
+  if (true) { Logger.log("autoCompletarAseosPasados: desactivado"); return; }
+
   // Los pendientes viven en el master (Confirmada). Para los que ya pasaron y
   // tienen aseadora asignada, creamos su fila completada en "Todos los Aseos"
   // (auto, sin form) y marcamos el master Finalizado.
@@ -1812,7 +1834,7 @@ function crearTriggersAutomaticos() {
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().atHour(10).everyDays(1).create();
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().everyHours(6).create();
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
-  ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
+  // autoCompletarAseosPasados: desactivado — los aseos no se autocompletan.
   ScriptApp.newTrigger("notificarAdminAsignacionesPendientes").timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger("recuperarLinksVideos").timeBased().atHour(3).everyDays(1).create();
   getSS().toast("Triggers creados (Airbnb 10AM + cada 6h · Calendar 2h · Auto-completar 10PM · Admin 7AM · Video links 3AM)", "Triggers", 6);
@@ -1832,8 +1854,12 @@ function getAllAseos() {
   var ss = getSS();
   var seen   = {};
   var result = [];
+  var fechaOverride = leerFechaAseoOverride();  // { codigo: "dd/MM/yyyy" } fecha de aseo manual
 
   function upsert(obj) {
+    // Si el aseo fue reagendado a mano, su fecha manda sobre la de la reserva.
+    var ov = fechaOverride[obj.codigo];
+    if (ov) { obj.checkin = ov; obj.checkout = ov; }
     var key = (obj.idProp || obj.propiedad) + "|" + obj.checkout;
     if (seen[key] !== undefined) {
       if (_scoreAseo(obj) >= _scoreAseo(result[seen[key]])) result[seen[key]] = obj;
@@ -1860,7 +1886,10 @@ function getAllAseos() {
       // manuales (MAN-). Ignoramos pendientes viejos del iCal — esos viven
       // en el master. Así evitamos que una reserva movida de propiedad
       // aparezca duplicada (la fila vieja con el mismo código).
-      var esManual = cod.indexOf("MAN") === 0;
+      // Manual = código MAN-… (auto) o marca "MANUAL" en col 12 (cuando el admin
+      // le puso un código de reserva real para ubicarlo). Ambos se muestran y
+      // se protegen del borrado del sync.
+      var esManual = cod.indexOf("MAN") === 0 || String(r[11] || "").trim() === "MANUAL";
       if (estado !== "Completado" && !esManual) continue;
       var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
       var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";

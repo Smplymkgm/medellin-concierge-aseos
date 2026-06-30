@@ -365,16 +365,25 @@ function App() {
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
   }
   function doFinalizarSinForm(a) {
-    if (!a.asignada) { showToast('Asigna una aseadora primero'); return; }
-    if (!confirm('Marcar "' + (propById(a.prop)?.nombre || a.codigo) + '" como Finalizado sin llenar el form?\n\nÚsalo para aseos viejos o cuando la aseadora no llenó el form.')) return;
+    const sinAsignar = !a.asignada;
+    const propNombre = propById(a.prop)?.nombre || a.codigo;
+    const msg = sinAsignar
+      ? 'Marcar "' + propNombre + '" como hecho SIN asignar?\n\nQuedará como "No asignado" y no se suma a ninguna aseadora ni a ningún pago.'
+      : 'Marcar "' + propNombre + '" como Finalizado sin llenar el form?\n\nÚsalo para aseos viejos o cuando la aseadora no llenó el form.';
+    if (!confirm(msg)) return;
 
     const prev = aseos;
     setAseos(list => list.map(x => x.codigo === a.codigo
-      ? { ...x, status: 'done', completadoEl: a.checkout, tipo: 'Sin form' }
+      ? { ...x, status: 'done', completadoEl: a.checkout, tipo: 'Sin form',
+          asignada: sinAsignar ? 'No asignado' : x.asignada,
+          precio: sinAsignar ? 0 : x.precio }
       : x));
-    showToast('Marcando finalizado…');
+    showToast('Marcando…');
 
-    gasPost({ action: 'completarAseo', codigo: a.codigo, nombre: a.asignada })
+    const payload = sinAsignar
+      ? { action: 'completarAseo', codigo: a.codigo, sinAsignar: true }
+      : { action: 'completarAseo', codigo: a.codigo, nombre: a.asignada };
+    gasPost(payload)
       .then(res => {
         if (res && res.ok) showToast('Marcado finalizado');
         else {
@@ -631,6 +640,7 @@ function App() {
       aseadora:  data.asignada || '',
       precio:    data.precio || 0,
       notas:     data.notas || '',
+      codigo:    data.codigo || '',
       // backend completa acceso desde la propiedad si no lo mandamos
     }).then(res => {
       if (res && res.ok && res.data) {
