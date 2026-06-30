@@ -336,8 +336,17 @@ function App() {
   // actions
   function openCompletar(a) { setCompletar(a); setCompletarOpen(true); }
   function doneCompletar(a, payload) {
+    // El completador es la aseadora ASIGNADA (así pasa la validación del backend
+    // y se le cuenta el pago), no quien tiene la sesión abierta. Si el admin
+    // completa un aseo sin asignar, va como "No asignado" (sin pago).
+    const esAdmin = session.rol === 'admin';
+    const nombreCompletar = a.asignada || (esAdmin ? '' : session.nombre);
+    const sinAsignar = esAdmin && !a.asignada;
+
+    const prev = aseos;
     setAseos(list => list.map(x => x.codigo === a.codigo
       ? { ...x, status: 'done', completadoEl: TODAY, tipo: x.tipo || 'Full',
+          asignada: sinAsignar ? 'No asignado' : x.asignada,
           notas: payload.notas || x.notas,
           entrada: payload.entrada, salida: payload.salida,
           revision: payload.revision, reposicion: payload.reposicion,
@@ -350,7 +359,8 @@ function App() {
     gasPost({
       action:    'completarAseo',
       codigo:    a.codigo,
-      nombre:    session.nombre,
+      nombre:    nombreCompletar,
+      sinAsignar: sinAsignar || undefined,
       notas:     payload.notas || '',
       entrada:   payload.entrada || '',
       salida:    payload.salida || '',
@@ -359,7 +369,12 @@ function App() {
       funcionamiento: payload.funcionamiento || null,
       reporte:   payload.reporte || '',
       videoLink: (payload.file && (payload.file.link || payload.file.name)) || '',
-    }).catch(function() {});
+    }).then(res => {
+      if (!res || !res.ok) {
+        setAseos(prev);
+        showToast('Error al guardar: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => { setAseos(prev); showToast('Error de conexión, no se guardó'); });
 
     const flags = flaggedAreas({ revision: payload.revision, funcionamiento: payload.funcionamiento, reposicion: payload.reposicion });
     showToast(flags.length ? 'Aseo completado · ' + flags.length + ' por revisar' : 'Aseo completado');
