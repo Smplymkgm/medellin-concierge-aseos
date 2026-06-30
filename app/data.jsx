@@ -69,7 +69,8 @@ function aseoEnriched(a) {
     // spreadsheet, queda en 0 en la app y se muestra como "paga
     // propietario" en lugar de "$0".
     precio: a.precio != null ? a.precio : (p.precio || 0),
-    noches: nights(a.checkin, a.checkout),
+    // noches = de la RESERVA (check-in → check-out real), no del día del aseo
+    noches: nights(a.checkin, a.checkoutReserva || a.checkout),
   };
 }
 function initials(name) {

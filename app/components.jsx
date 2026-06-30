@@ -50,7 +50,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
           <div className="aseo-dates">
             <span className="aseo-checkout">Fecha de aseo {fmtDate(a.checkout).replace(/(\d+)\s+(\w+)$/, '$1 de $2')}</span>
             <span className="aseo-meta">
-              Check-in {fmtShort(a.checkin)} · {a.noches} {a.noches === 1 ? 'noche' : 'noches'}
+              Check-in {fmtShort(a.checkin)} → Check-out {fmtShort(a.checkoutReserva || a.checkout)} · {a.noches} {a.noches === 1 ? 'noche' : 'noches'}
             </span>
           </div>
           <div className="row gap-base" style={{ marginTop: 10, flexWrap: 'wrap' }}>

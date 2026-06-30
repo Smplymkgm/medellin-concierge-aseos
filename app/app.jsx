@@ -87,9 +87,14 @@ function transformAseos(apiAseos) {
     if (dedup[key] === undefined || score(a) >= score(dedup[key])) dedup[key] = a;
   });
   return Object.keys(dedup).map(function(k) { return dedup[k]; }).map(function(a) {
-    var checkout = parseDateStr(a.checkout);
+    // checkout (el campo que toda la app usa para agendar/ordenar) = DÍA DEL ASEO.
+    // checkoutReserva = fecha real de salida de la reserva (Airbnb) — solo para
+    // mostrar check-out y calcular noches. checkin = fecha real de entrada.
+    var checkoutReserva = parseDateStr(a.checkout);
     var checkin  = parseDateStr(a.checkin);
+    var checkout = parseDateStr(a.fechaAseo || a.checkout);  // día del aseo
     checkout.setHours(0, 0, 0, 0);
+    checkoutReserva.setHours(0, 0, 0, 0);
     var isCancelled = a.estado === 'Cancelado';
     var isDone      = a.estado === 'Completado';
     var isToday = sameDay(checkout, hoy);
@@ -102,7 +107,8 @@ function transformAseos(apiAseos) {
       codigo:   a.codigo,
       prop:     a.idProp,
       checkin:  checkin,
-      checkout: checkout,
+      checkout: checkout,            // día del aseo (puede diferir de la reserva)
+      checkoutReserva: checkoutReserva,  // salida real de la reserva (Airbnb)
       status:   status,
       asignada: a.asignada || null,
       priority: isToday && !isDone,
@@ -422,7 +428,7 @@ function App() {
 
     const prev = aseos;
     setAseos(list => list.map(x => x.codigo === a.codigo
-      ? { ...x, checkin: nuevaDate, checkout: nuevaDate,
+      ? { ...x, checkout: nuevaDate,   // solo el día del aseo; check-in/out reales intactos
           status: x.status === 'done' ? 'done'
                   : !x.asignada ? 'unassigned'
                   : sameDay(nuevaDate, TODAY) ? 'urgent' : 'pending',
@@ -637,7 +643,7 @@ function App() {
     const tmpCodigo = 'PENDING-' + Date.now();
     const optimistic = {
       codigo: tmpCodigo,
-      prop: data.propId, checkin: co, checkout: co,
+      prop: data.propId, checkin: co, checkout: co, checkoutReserva: co,
       status: data.asignada ? (sameDay(co, TODAY) ? 'urgent' : 'pending') : 'unassigned',
       asignada: data.asignada, priority: false,
       notas: data.notas, precio: data.precio, tipo: data.tipo,
