@@ -888,13 +888,34 @@ function handleMoverAseo(body) {
   var lock = LockService.getScriptLock();
   try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
   try {
+    // Guardamos también el checkout ACTUAL de la reserva como "base". Si más
+    // tarde la reserva cambia de fecha por iCal (base != nuevo checkout), el
+    // override se considera obsoleto y el aseo vuelve a seguir a la reserva.
+    var base = buscarCheckoutReserva(codigo);
     var mapa = leerFechaAseoOverride();
-    mapa[codigo] = nuevaFecha;          // solo la fecha del aseo; reserva intacta
+    mapa[codigo] = { f: nuevaFecha, base: base };  // solo la fecha del aseo; reserva intacta
     guardarFechaAseoOverride(mapa);
     return respond(true, null);
   } finally {
     try { lock.releaseLock(); } catch(e) {}
   }
+}
+
+// Devuelve el checkout (texto dd/MM/yyyy) actual de la reserva con ese código,
+// buscando en el master y luego en "Todos los Aseos". "" si no se encuentra.
+function buscarCheckoutReserva(codigo) {
+  var ss = getSS();
+  var hojas = [CONFIG.hojaMaestra, CONFIG.hojaAseos];
+  for (var h = 0; h < hojas.length; h++) {
+    var hoja = ss.getSheetByName(hojas[h]);
+    if (!hoja || hoja.getLastRow() < 2) continue;
+    var cods = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues();
+    var disp = hoja.getRange(2, 5, hoja.getLastRow()-1, 1).getDisplayValues();  // col E = checkout
+    for (var i = 0; i < cods.length; i++) {
+      if (String(cods[i][0]).trim() === codigo) return String(disp[i][0] || "").trim();
+    }
+  }
+  return "";
 }
 
 // ============================================================
@@ -1857,9 +1878,18 @@ function getAllAseos() {
   var fechaOverride = leerFechaAseoOverride();  // { codigo: "dd/MM/yyyy" } fecha de aseo manual
 
   function upsert(obj) {
-    // Si el aseo fue reagendado a mano, su fecha manda sobre la de la reserva.
+    // fechaAseo = el día en que se hará la limpieza. Por defecto = checkout de la
+    // reserva; si el admin lo movió a mano, manda el override. NUNCA tocamos
+    // checkin/checkout (esas son las fechas reales de la reserva, de Airbnb).
+    obj.fechaAseo = obj.checkout;
     var ov = fechaOverride[obj.codigo];
-    if (ov) { obj.checkin = ov; obj.checkout = ov; }
+    if (ov) {
+      var ovF    = (typeof ov === "string") ? ov : ov.f;
+      var ovBase = (ov && typeof ov === "object") ? ov.base : null;
+      // Si la reserva cambió de fecha (iCal) desde que se movió el aseo, el
+      // override quedó obsoleto → gana la fecha real de la reserva.
+      if (ovF && (!ovBase || ovBase === obj.checkout)) obj.fechaAseo = ovF;
+    }
     var key = (obj.idProp || obj.propiedad) + "|" + obj.checkout;
     if (seen[key] !== undefined) {
       if (_scoreAseo(obj) >= _scoreAseo(result[seen[key]])) result[seen[key]] = obj;
