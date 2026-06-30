@@ -1082,7 +1082,7 @@ function handleAgregarPropiedad(body) {
   var nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
 
   var folderId = "";
-  try { folderId = crearCarpetaPropiedad(nombre); } catch(e) { Logger.log("Drive: " + e.message); }
+  try { folderId = crearCarpetaPropiedad(nuevoId + " " + nombre); } catch(e) { Logger.log("Drive: " + e.message); }
 
   var nuevaFila = [nuevoId, nombre, precioAseo, acceso, icalUrl, empleadaAuto, folderId];
   var fi = hoja.getLastRow() + 1;
@@ -1261,26 +1261,27 @@ function handleGetUploadUrl(body) {
 
   var props    = getPropiedades();
   var folderId = "";
+  var propObj  = null;
   for (var i = 0; i < props.length; i++) {
     if (props[i].nombre === propiedad || props[i].id === propiedad) {
-      folderId = props[i].folderId; break;
+      folderId = props[i].folderId; propObj = props[i]; break;
     }
   }
+  var nombreFolder = propObj ? nombreCarpetaProp(propObj) : propiedad;
 
   if (!folderId) {
     try {
-      folderId = crearCarpetaPropiedad(propiedad);
+      folderId = crearCarpetaPropiedad(nombreFolder);
       actualizarFolderIdPropiedad(propiedad, folderId);
     } catch(e) {
       return respond(false, null, "No se pudo crear carpeta Drive: " + e.message);
     }
   } else {
-    // Si el folder existe pero su nombre no coincide con el nombre actual
-    // de la propiedad (caso: el admin renombró la propiedad después de
-    // crear el folder), renombrar el folder para que matchee.
+    // Si el admin renombró la propiedad después de crear el folder, renombrar
+    // el folder al formato "<código> <nombre>".
     try {
       var folder = DriveApp.getFolderById(folderId);
-      if (folder.getName() !== propiedad) folder.setName(propiedad);
+      if (folder.getName() !== nombreFolder) folder.setName(nombreFolder);
     } catch(e) { Logger.log("Folder rename skipped: " + e.message); }
   }
 
@@ -1468,17 +1469,44 @@ function getCarpetaRaiz() {
   return nuevo;
 }
 
-function crearCarpetaPropiedad(nombrePropiedad) {
+// Nombre de carpeta = "<código> <nombre>" (código de propiedad al frente).
+function nombreCarpetaProp(p) {
+  var id  = String((p && p.id)     || "").trim();
+  var nom = String((p && p.nombre) || "").trim();
+  return (id ? id + " " : "") + nom;
+}
+
+function crearCarpetaPropiedad(folderName) {
   var raiz = getCarpetaRaiz();
-  var existing = raiz.getFoldersByName(nombrePropiedad);
+  var existing = raiz.getFoldersByName(folderName);
   if (existing.hasNext()) {
     var ef = existing.next();
     compartirAnyoneViewer(ef);
     return ef.getId();
   }
-  var nf = raiz.createFolder(nombrePropiedad);
+  var nf = raiz.createFolder(folderName);
   compartirAnyoneViewer(nf);
   return nf.getId();
+}
+
+// Renombra TODAS las carpetas de propiedades al formato "<código> <nombre>".
+// Correr desde el menú tras cambiar nombres de propiedades.
+function renombrarCarpetasPropiedades() {
+  var props = getPropiedades();
+  var renombradas = 0, sinCarpeta = 0;
+  for (var i = 0; i < props.length; i++) {
+    var p = props[i];
+    var deseado = nombreCarpetaProp(p);
+    if (!deseado) continue;
+    if (!p.folderId) { sinCarpeta++; continue; }
+    try {
+      var f = DriveApp.getFolderById(p.folderId);
+      if (f.getName() !== deseado) { f.setName(deseado); renombradas++; }
+    } catch(e) { Logger.log("renombrarCarpetas " + p.id + ": " + e.message); }
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    renombradas + " carpetas renombradas" + (sinCarpeta ? " · " + sinCarpeta + " sin carpeta" : ""),
+    "Carpetas Drive", 6);
 }
 
 function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
@@ -1634,6 +1662,7 @@ function onOpen() {
     .addItem("Recuperar links de videos huérfanos",          "recuperarLinksVideos")
     .addItem("Normalizar estados Cancelado + color rojo",    "normalizarEstadosCancelados")
     .addItem("Recuperar reservas mal canceladas",            "recuperarCanceladosFalsos")
+    .addItem("Renombrar carpetas Drive (código + nombre)",   "renombrarCarpetasPropiedades")
     .addItem("Eliminar aseos duplicados",                    "eliminarAseosDuplicados")
     .addItem("Actualizar precios de propiedades",            "actualizarPreciosPropiedades");
 
