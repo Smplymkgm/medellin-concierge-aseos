@@ -29,6 +29,9 @@ jobs:
           SHORT_SHA="${GITHUB_SHA:0:7}"
           # Reemplaza cualquier ?v=... en script src de .jsx por el SHA del commit
           sed -i "s/\\.jsx?v=[^\"]*\"/\\.jsx?v=$SHORT_SHA\"/g" _site/index.html
+          # Compatibilidad: publicar también Index.html (mayúscula) para accesos
+          # directos guardados con la URL vieja.
+          cp _site/index.html _site/Index.html
           # Imprime el resultado para debug
           grep -o "\\.jsx?v=[^\"]*\"" _site/index.html | sort -u
 
