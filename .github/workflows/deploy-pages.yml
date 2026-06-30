@@ -22,13 +22,15 @@ jobs:
       - name: Stage site with auto cache buster
         run: |
           mkdir -p _site
-          cp Index.html _site/
+          # GitHub Pages sirve index.html (minúscula) como página por defecto.
+          # El archivo fuente es Index.html, así que lo publicamos en minúscula.
+          cp Index.html _site/index.html
           cp -r app _site/
           SHORT_SHA="${GITHUB_SHA:0:7}"
           # Reemplaza cualquier ?v=... en script src de .jsx por el SHA del commit
-          sed -i "s/\\.jsx?v=[^\"]*\"/\\.jsx?v=$SHORT_SHA\"/g" _site/Index.html
+          sed -i "s/\\.jsx?v=[^\"]*\"/\\.jsx?v=$SHORT_SHA\"/g" _site/index.html
           # Imprime el resultado para debug
-          grep -o "\\.jsx?v=[^\"]*\"" _site/Index.html | sort -u
+          grep -o "\\.jsx?v=[^\"]*\"" _site/index.html | sort -u
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
