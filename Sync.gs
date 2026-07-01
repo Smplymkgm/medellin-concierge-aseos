@@ -31,9 +31,9 @@ function sincronizarCalendarios() {
       }
     }
 
-    limpiarDatos(hoja);
-    configurarEncabezados(hoja);
-    aplicarDropdowns(hoja);
+    // OJO: NO limpiar aquí. Primero hacemos fetch y pasamos el circuit breaker;
+    // solo entonces borramos y reescribimos. Si limpiáramos antes y Airbnb
+    // fallara, el master quedaría vacío (se perderían asignaciones y datos).
 
     // Recolectar reservas activas del iCal. Dedup en DOS niveles para que el
     // master nunca muestre filas repetidas:
@@ -78,6 +78,12 @@ function sincronizarCalendarios() {
         "Airbnb Sync", 8);
       return;
     }
+
+    // Ya pasamos el circuit breaker (hay datos del feed) → ahora sí limpiamos
+    // y reescribimos. 'guardado' y 'manuales' se leyeron ANTES de limpiar.
+    limpiarDatos(hoja);
+    configurarEncabezados(hoja);
+    aplicarDropdowns(hoja);
 
     // Soft-cancel robusto: una reserva guardada que NO llegó en el iCal solo
     // se marca Cancelada si se cumplen las 3 condiciones. En cualquier otro
