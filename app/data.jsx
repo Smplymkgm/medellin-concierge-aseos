@@ -64,6 +64,8 @@ function aseoEnriched(a) {
     // propagar el acceso estructurado al objeto enriquecido para que
     // la AseoCard lo lea desde a.accesoEstructurado
     accesoEstructurado: a.accesoEstructurado || p.accesoEstructurado || null,
+    mapsLink:   p.mapsLink   || '',
+    airbnbLink: p.airbnbLink || '',
     // precio = 0 puede ser intencional (el propietario paga el aseo
     // directamente, no Medcon). Lo respetamos: si está en 0 en el
     // spreadsheet, queda en 0 en la app y se muestra como "paga
@@ -82,7 +84,7 @@ function propInitials(name) {
   return ((w[0]||'')[0]||'').toUpperCase() + ((w[1]||'')[0]||'').toUpperCase();
 }
 
-const STATUS_LABEL = { urgent:'Hoy', pending:'Pendiente', done:'Completado', unassigned:'Sin asignar', cancelled:'Cancelado' };
+const STATUS_LABEL = { urgent:'Hoy', pending:'Pendiente', done:'Completado', unassigned:'Sin asignar', cancelled:'Cancelado', iniciado:'Iniciado' };
 
 /* -------- Checklist del form de completado (4 secciones) -------- */
 /* Áreas de aseo — valor: 'ok' | 'review' | 'na' */

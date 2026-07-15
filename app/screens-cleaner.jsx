@@ -44,7 +44,7 @@ function HoyScreen({ ctx }) {
             {sortedAtrasados.map(a => (
               <AseoCard key={a.codigo} aseo={a} role="aseadora"
                 open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
-                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+                onComplete={ctx.openCompletar} onReassign={ctx.openReassign} onIniciar={ctx.doIniciar} />
             ))}
           </>
         )}
@@ -52,13 +52,14 @@ function HoyScreen({ ctx }) {
           <span className="label sec">Hoy</span>
           <span className="caption count">{sortedHoy.length} {sortedHoy.length === 1 ? 'aseo' : 'aseos'}</span>
         </div>
-        {sortedHoy.length === 0 && (
+        {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
+        {ctx.dataLoaded && sortedHoy.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos para hoy</div></div>
         )}
         {sortedHoy.map(a => (
           <AseoCard key={a.codigo} aseo={a} role="aseadora"
             open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
-            onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+            onComplete={ctx.openCompletar} onReassign={ctx.openReassign} onIniciar={ctx.doIniciar} />
         ))}
 
         {proximos.length > 0 && (
@@ -73,7 +74,7 @@ function HoyScreen({ ctx }) {
                 {g.items.map(a => (
                   <AseoCard key={a.codigo} aseo={a} role="aseadora"
                     open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
-                    onComplete={ctx.openCompletar} onReassign={ctx.openReassign} />
+                    onComplete={ctx.openCompletar} onReassign={ctx.openReassign} onIniciar={ctx.doIniciar} />
                 ))}
               </div>
             ))}
@@ -101,14 +102,16 @@ function CalendarioScreen({ ctx, role }) {
         month={ctx.calMonth} year={ctx.calYear} onMonth={ctx.shiftMonth} />
       <div className="cal-daylist">
         <div className="cal-daylabel label sec">{ctx.calSel ? fmtDate(ctx.calSel) : 'Selecciona un día'}</div>
-        {ctx.calSel && dayItems.length === 0 && <div className="caption" style={{ paddingBottom: 16 }}>Sin aseos este día</div>}
+        {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
+        {ctx.dataLoaded && ctx.calSel && dayItems.length === 0 && <div className="caption" style={{ paddingBottom: 16 }}>Sin aseos este día</div>}
         {dayItems.map(a => (
           <AseoCard key={a.codigo} aseo={a} role={role}
             open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
             onComplete={ctx.openCompletar}
             onReassign={role === 'admin' ? ctx.openReassign : undefined}
             onFinalizarSinForm={role === 'admin' ? ctx.doFinalizarSinForm : undefined}
-            onMoverFecha={role === 'admin' ? ctx.openMoverFecha : undefined} />
+            onMoverFecha={role === 'admin' ? ctx.openMoverFecha : undefined}
+            onIniciar={role === 'aseadora' ? ctx.doIniciar : undefined} />
         ))}
         <div style={{ height: 80 }}></div>
       </div>
@@ -213,7 +216,8 @@ function HistorialScreen({ ctx }) {
       </div>
       <div className="aseo-list">
         <div className="day-head"><span className="label sec">Completados</span></div>
-        {inPeriod.length === 0 && (
+        {!ctx.dataLoaded && <LoadingState label="Cargando historial…" />}
+        {ctx.dataLoaded && inPeriod.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos en este período</div></div>
         )}
         {inPeriod.map(a => (

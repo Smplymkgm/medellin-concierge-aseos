@@ -76,7 +76,8 @@ function AseosScreen({ ctx }) {
       </div>
 
       <div className="aseo-list" style={{ paddingTop: 4 }}>
-        {groups.length === 0 && <div className="empty"><Icon name="list" size={28} /><div className="body">Sin aseos con estos filtros</div></div>}
+        {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
+        {ctx.dataLoaded && groups.length === 0 && <div className="empty"><Icon name="list" size={28} /><div className="body">Sin aseos con estos filtros</div></div>}
         {groups.map(g => (
           <div className="day-group" key={g.key}>
             <div className="day-head">
@@ -133,7 +134,8 @@ function PropiedadesScreen({ ctx }) {
       </div>
 
       <div className="prop-list">
-        {filtradas.length === 0 && (
+        {!ctx.dataLoaded && <LoadingState label="Cargando propiedades…" />}
+        {ctx.dataLoaded && filtradas.length === 0 && (
           <div className="empty"><Icon name="home" size={28} /><div className="body">Sin resultados</div></div>
         )}
         {filtradas.map(p => (
@@ -311,9 +313,15 @@ function PersonalScreen({ ctx }) {
                   <Icon name="phone" size={14} /> {c.tel || '—'}
                 </div>
               </div>
-              <div className="team-stat">
+              <div className="team-stat" style={{ alignItems: 'flex-end', gap: 6 }}>
                 <div className="num">{fmtCOP(gan)}</div>
                 <div className="label ter" style={{ textTransform: 'capitalize' }}>{mesActual}</div>
+                {ctx.startViewAs && (
+                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }}
+                    onClick={e => { e.stopPropagation(); ctx.startViewAs(c.nombre); }}>
+                    👁 Ver como
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -410,7 +418,8 @@ function HistorialAdminScreen({ ctx }) {
 
       <div className="aseo-list">
         <div className="day-head"><span className="label sec">Detalle</span></div>
-        {list.length === 0 && (
+        {!ctx.dataLoaded && <LoadingState label="Cargando historial…" />}
+        {ctx.dataLoaded && list.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos con estos filtros</div></div>
         )}
         {list.map(a => (

@@ -494,11 +494,13 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       notas: struct.notas || '',
       acceso: (prop.claves && prop.claves.acceso) || '',
       icals: (prop.icalUrls && prop.icalUrls.length) ? prop.icalUrls.slice() : [''],
+      mapsLink: prop.mapsLink || '', airbnbLink: prop.airbnbLink || '',
     });
     else setForm({
       id: nextPropId(), nombre: '', direccion: '', precio: 50000,
       ext_tipo: '', ext_valor: '', int_tipo: '', int_valor: '', notas: '',
       acceso: '', icals: [''],
+      mapsLink: '', airbnbLink: '',
     });
   }, [open, prop]);
 
@@ -523,6 +525,8 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       acceso: form.acceso.trim(),
       accesoEstructurado: accesoEstructurado,
       icalUrls: (form.icals || []).map(function(u){ return String(u || '').trim(); }).filter(Boolean),
+      mapsLink: (form.mapsLink || '').trim(),
+      airbnbLink: (form.airbnbLink || '').trim(),
     });
   }
 
@@ -598,6 +602,18 @@ function EditarPropiedadSheet({ open, prop, onClose, onSave }) {
       <div className="form-group">
         <label className="label">Notas de acceso (opcional)</label>
         <textarea className="textarea" rows="2" value={form.notas} onChange={e => set('notas', e.target.value)} placeholder="Llaves en porteria, instrucciones, etc." />
+      </div>
+
+      <div className="divider"></div>
+      <div className="section-title" style={{ marginBottom: 6 }}><Icon name="location" size={16} /><span className="h3">Enlaces</span></div>
+      <div className="caption" style={{ marginBottom: 12 }}>Se muestran en la tarjeta de la aseadora como accesos rápidos.</div>
+      <div className="form-group">
+        <label className="label">🏠 Link de Airbnb</label>
+        <input className="text-input" value={form.airbnbLink} onChange={e => set('airbnbLink', e.target.value)} placeholder="https://www.airbnb.com/rooms/…" />
+      </div>
+      <div className="form-group">
+        <label className="label">📍 Link de Google Maps</label>
+        <input className="text-input" value={form.mapsLink} onChange={e => set('mapsLink', e.target.value)} placeholder="https://maps.app.goo.gl/…" />
       </div>
 
       <div className="divider"></div>
