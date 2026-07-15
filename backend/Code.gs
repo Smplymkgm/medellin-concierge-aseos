@@ -2,7 +2,7 @@
 // CONFIGURACIÓN
 // ============================================================
 
-var SPREADSHEET_ID = "1iKbcU81cr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q";
+var SPREADSHEET_ID = "1iKbcU8lcr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q";
 function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
 
 var CONFIG = {
@@ -90,6 +90,7 @@ function doPost(e) {
     if (action === "login")               return handleLogin(body);
     if (action === "getAseos")            return handleGetAseos(body);
     if (action === "completarAseo")       return handleCompletarAseo(body);
+    if (action === "iniciarAseo")         return handleIniciarAseo(body);
     if (action === "getAllAseos")          return handleGetAllAseos(body);
     if (action === "asignarAseo")         return handleAsignarAseo(body);
     if (action === "moverAseo")           return handleMoverAseo(body);
@@ -179,6 +180,8 @@ function handleGetAseos(body) {
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   var proximos  = [];
   var historial = [];
+  var propsPorId = {};
+  getPropiedades().forEach(function(p){ propsPorId[p.id] = p; });
 
   if (hoja && hoja.getLastRow() >= 2) {
     var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
@@ -195,12 +198,14 @@ function handleGetAseos(body) {
       var precio      = Number(r[8]) || 0;
       var accesoRaw   = String(r[10] || "");
       var checkout    = fechaADate(checkoutStr);
+      var idProp      = String(r[1]).trim();
+      var propInfo    = propsPorId[idProp];
 
       if (!checkout) continue;
 
       var aseo = {
         codigo:    String(r[0]),
-        idProp:    String(r[1]).trim(),
+        idProp:    idProp,
         propiedad: String(r[2]).trim(),
         checkin:   checkinStr,
         checkout:  checkoutStr,
@@ -209,6 +214,8 @@ function handleGetAseos(body) {
         precio:    precio,
         notas:     String(r[9]  || ""),
         accesos:   accesoRaw ? accesoRaw.split("|").map(function(a){return a.trim();}).filter(Boolean) : [],
+        mapsLink:   propInfo ? propInfo.mapsLink   : "",
+        airbnbLink: propInfo ? propInfo.airbnbLink : "",
       };
 
       if (estado === "Completado") {
@@ -309,6 +316,50 @@ function handleCompletarAseo(body) {
 }
 
 // ============================================================
+// ASEADORA — iniciarAseo
+// ============================================================
+
+function handleIniciarAseo(body) {
+  var codigo = String(body.codigo || "").trim();
+  var nombre = String(body.nombre || "").trim();
+  if (!codigo || !nombre) return respond(false, null, "Codigo y nombre requeridos");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+
+  for (var i = 0; i < datos.length; i++) {
+    if (String(datos[i][0]) !== codigo) continue;
+    if (String(datos[i][6]).trim() !== nombre) return respond(false, null, "No autorizado");
+
+    var estadoActual = String(datos[i][7] || "");
+    if (estadoActual === "Completado" || estadoActual === "Cancelado") {
+      return respond(false, null, "Este aseo ya no se puede iniciar");
+    }
+
+    var fila = i + 2;
+    hoja.getRange(fila, 8).setValue("Iniciado");
+
+    // Sync al master
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
+    if (master && master.getLastRow() >= 2) {
+      var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+      for (var j = 0; j < mc.length; j++) {
+        if (String(mc[j][0]) === codigo) {
+          master.getRange(j+2, 7).setValue("Iniciado");
+          break;
+        }
+      }
+    }
+
+    return respond(true, null);
+  }
+  return respond(false, null, "Aseo no encontrado");
+}
+
+// ============================================================
 // ADMIN — getAllAseos
 // ============================================================
 
@@ -325,6 +376,8 @@ function handleGetAllAseos(body) {
   var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
   var dInicio = fechaInicio ? fechaADate(fechaInicio) : null;
   var dFin    = fechaFin    ? fechaADate(fechaFin)    : null;
+  var propsPorId = {};
+  getPropiedades().forEach(function(p){ propsPorId[p.id] = p; });
 
   var result = [];
   for (var i = 0; i < datos.length; i++) {
@@ -335,6 +388,8 @@ function handleGetAllAseos(body) {
     var checkinStr  = disp[i][0] || fechaToStr(r[3]);
     var checkoutStr = disp[i][1] || fechaToStr(r[4]);
     var checkout    = fechaADate(checkoutStr);
+    var idProp      = String(r[1]).trim();
+    var propInfo    = propsPorId[idProp];
 
     // Filtro aseadora
     if (filtroAseadora && aseadora.toLowerCase() !== filtroAseadora) continue;
@@ -344,7 +399,7 @@ function handleGetAllAseos(body) {
 
     result.push({
       codigo:          String(r[0]),
-      idProp:          String(r[1]).trim(),
+      idProp:          idProp,
       propiedad:       String(r[2]).trim(),
       checkin:         checkinStr,
       checkout:        checkoutStr,
@@ -355,6 +410,8 @@ function handleGetAllAseos(body) {
       notas:           String(r[9]  || ""),
       acceso:          String(r[10] || ""),
       fechaCompletado: String(r[12] || ""),
+      mapsLink:        propInfo ? propInfo.mapsLink   : "",
+      airbnbLink:      propInfo ? propInfo.airbnbLink : "",
     });
   }
 
@@ -520,7 +577,7 @@ function getPropiedades() {
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var lastCol = Math.max(hoja.getLastColumn(), 7);
+  var lastCol = Math.max(hoja.getLastColumn(), 9);
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
   var props = [];
   for (var i = 0; i < datos.length; i++) {
@@ -537,6 +594,8 @@ function getPropiedades() {
       icalUrl:       url,
       empleadaAuto:  String(r[5] || "").trim(),
       folderId:      String(r[6] || "").trim(),
+      mapsLink:      String(r[7] || "").trim(),
+      airbnbLink:    String(r[8] || "").trim(),
     });
   }
   return props;
@@ -553,6 +612,8 @@ function handleAgregarPropiedad(body) {
   var icalUrl   = String(datos.icalUrl   || "").trim();
   var precioAseo = Number(datos.precioAseo) || 0;
   var empleadaAuto = String(datos.empleadaAuto || "").trim();
+  var mapsLink   = String(datos.mapsLink   || "").trim();
+  var airbnbLink = String(datos.airbnbLink || "").trim();
 
   if (!nombre || !icalUrl) return respond(false, null, "Nombre e iCal URL requeridos");
 
@@ -573,11 +634,11 @@ function handleAgregarPropiedad(body) {
   var folderId = "";
   try { folderId = crearCarpetaPropiedad(nombre); } catch(e) { Logger.log("Drive: " + e.message); }
 
-  var nuevaFila = [nuevoId, nombre, precioAseo, acceso, icalUrl, empleadaAuto, folderId];
+  var nuevaFila = [nuevoId, nombre, precioAseo, acceso, icalUrl, empleadaAuto, folderId, mapsLink, airbnbLink];
   var fi = hoja.getLastRow() + 1;
-  hoja.getRange(fi, 1, 1, 7).setValues([nuevaFila]);
+  hoja.getRange(fi, 1, 1, 9).setValues([nuevaFila]);
   hoja.getRange(fi, 3, 1, 1).setNumberFormat("$#,##0");
-  hoja.getRange(fi, 1, 1, 7)
+  hoja.getRange(fi, 1, 1, 9)
     .setBackground(fi % 2 === 0 ? "#f8f9fa" : "#ffffff")
     .setFontFamily("Arial").setFontSize(10);
 
@@ -602,6 +663,8 @@ function handleActualizarPropiedad(body) {
     if (datos.acceso      !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
     if (datos.icalUrl     !== undefined) hoja.getRange(fila, 5).setValue(datos.icalUrl);
     if (datos.empleadaAuto !== undefined) hoja.getRange(fila, 6).setValue(datos.empleadaAuto);
+    if (datos.mapsLink    !== undefined) hoja.getRange(fila, 8).setValue(datos.mapsLink);
+    if (datos.airbnbLink  !== undefined) hoja.getRange(fila, 9).setValue(datos.airbnbLink);
     return respond(true, null);
   }
   return respond(false, null, "Propiedad no encontrada: " + id);

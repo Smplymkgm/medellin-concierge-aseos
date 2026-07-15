@@ -1,4 +1,4 @@
-import icons from './icons2.js?v=5';
+import icons from './icons2.js?v=12';
 
 // Shared date helpers (same logic as GAS, client-side)
 export function parseDate(str) {
@@ -39,6 +39,7 @@ export function badgeEstado(estado, urgente) {
   if (urgente) return `<span class="badge badge-urgent">PRIORIDAD</span>`;
   if (estado === 'Completado') return `<span class="badge badge-done">Completado</span>`;
   if (estado === 'Cancelado')  return `<span class="badge badge-neutral">Cancelado</span>`;
+  if (estado === 'Iniciado')   return `<span class="badge badge-progress">En curso</span>`;
   return `<span class="badge badge-pending">Pendiente</span>`;
 }
 
@@ -46,6 +47,9 @@ export function badgeEstado(estado, urgente) {
 export function renderAseoCard(aseo, { onCompletar, showAseadora } = {}) {
   const urgent = isUrgent(aseo);
   const today  = isToday(aseo.checkout);
+  const ingresanHuespedes = isToday(aseo.checkin);
+  const iniciado = aseo.estado === 'Iniciado';
+  const activo = aseo.estado !== 'Completado' && aseo.estado !== 'Cancelado';
 
   return `
   <div class="aseo-card${urgent ? ' urgent' : ''}" data-codigo="${aseo.codigo}">
@@ -54,6 +58,9 @@ export function renderAseoCard(aseo, { onCompletar, showAseadora } = {}) {
         <span class="aseo-card-prop">${aseo.propiedad}</span>
         ${badgeEstado(aseo.estado, urgent)}
       </div>
+      ${ingresanHuespedes && activo ? `<div class="badge badge-guest" style="margin:6px 0 0">⚠️ Ingresan huéspedes</div>` : ''}
+      ${aseo.airbnbLink ? `<div class="aseo-card-link"><a href="${aseo.airbnbLink}" target="_blank" rel="noopener">${icons.get('home', 13)} Ver propiedad</a></div>` : ''}
+      ${aseo.mapsLink ? `<div class="aseo-card-link"><a href="${aseo.mapsLink}" target="_blank" rel="noopener">📍 Dirección</a></div>` : ''}
       <div class="aseo-card-meta">
         <span>${icons.get('calendar', 13)} Checkout: <strong>${formatFecha(aseo.checkout)}</strong></span>
         ${aseo.noches ? `<span>${icons.get('clock', 13)} ${aseo.noches} noche${aseo.noches > 1 ? 's' : ''}</span>` : ''}
@@ -69,13 +76,20 @@ export function renderAseoCard(aseo, { onCompletar, showAseadora } = {}) {
         </div>
       ` : ''}
     </div>
-    ${(today || aseo.estado === 'Pendiente') && onCompletar ? `
+    ${(today || aseo.estado === 'Pendiente' || iniciado) && onCompletar ? `
     <div class="aseo-card-footer">
       <span style="font-size:12px;color:var(--text-secondary)">${aseo.idProp}</span>
-      ${aseo.estado !== 'Completado' && aseo.estado !== 'Cancelado' ? `
-        <button class="btn btn-primary" style="padding:8px 14px;font-size:13px;" data-action="completar" data-codigo="${aseo.codigo}">
-          ${icons.get('check', 14)} Completar
-        </button>
+      ${activo ? `
+        <div style="display:flex;gap:6px">
+          ${!iniciado ? `
+            <button class="btn btn-secondary" style="padding:8px 14px;font-size:13px;" data-action="iniciar" data-codigo="${aseo.codigo}">
+              ${icons.get('clock', 14)} Iniciar
+            </button>
+          ` : ''}
+          <button class="btn btn-primary" style="padding:8px 14px;font-size:13px;" data-action="completar" data-codigo="${aseo.codigo}">
+            ${icons.get('check', 14)} Completar
+          </button>
+        </div>
       ` : ''}
     </div>
     ` : `

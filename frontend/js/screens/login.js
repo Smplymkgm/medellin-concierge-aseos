@@ -1,8 +1,9 @@
-import { login }       from '../api.js?v=4';
-import { saveSession } from '../auth.js?v=4';
-import icons           from '../components/icons2.js?v=4';
+import { login }       from '../api.js?v=12';
+import { saveSession } from '../auth.js?v=12';
+import icons           from '../components/icons2.js?v=12';
 
 let _pin = '';
+let _nombreSel = '';
 const PERSONAL = ['Ana', 'Fernanda', 'Claudia', 'Admin'];
 
 export function renderLogin() {
@@ -13,12 +14,15 @@ export function renderLogin() {
     <p class="login-subtitle">Gestión de Aseos</p>
 
     <div class="login-form">
-      <div class="field">
+      <div class="field" style="position:relative">
         <label class="field-label">Nombre</label>
-        <select class="field-input" id="login-nombre">
-          <option value="">Selecciona tu nombre...</option>
-          ${PERSONAL.map(n => `<option value="${n}">${n}</option>`).join('')}
-        </select>
+        <input class="field-input" id="login-nombre" type="text" autocomplete="off"
+          placeholder="Escribe tu nombre...">
+        <div id="login-suggest" style="
+          display:none;position:absolute;top:100%;left:0;right:0;z-index:10;
+          background:var(--bg-surface);border:1px solid var(--border-light);
+          border-radius:var(--radius-md);margin-top:4px;overflow:hidden;
+          box-shadow:0 4px 12px rgba(0,0,0,0.08)"></div>
       </div>
 
       <div class="field">
@@ -54,6 +58,7 @@ export function renderLogin() {
 
 export function initLogin() {
   _pin = '';
+  _nombreSel = '';
 
   document.getElementById('pin-pad').addEventListener('click', e => {
     const btn = e.target.closest('.pin-key');
@@ -67,20 +72,54 @@ export function initLogin() {
     updatePinUI();
   });
 
-  document.getElementById('login-nombre').addEventListener('change', updatePinUI);
+  const nombreInput = document.getElementById('login-nombre');
+  const suggestBox  = document.getElementById('login-suggest');
+
+  nombreInput.addEventListener('input', () => {
+    _nombreSel = '';
+    const q = nombreInput.value.trim().toLowerCase();
+    if (!q) { suggestBox.style.display = 'none'; updatePinUI(); return; }
+    const matches = PERSONAL.filter(n => n.toLowerCase().startsWith(q));
+    if (!matches.length) { suggestBox.style.display = 'none'; updatePinUI(); return; }
+    suggestBox.innerHTML = matches.map(n => `
+      <div class="login-suggest-item" data-nombre="${n}" style="
+        padding:10px 14px;font-size:14px;cursor:pointer;color:var(--text-primary)">
+        ${n}
+      </div>`).join('');
+    suggestBox.style.display = 'block';
+    updatePinUI();
+  });
+
+  suggestBox.addEventListener('click', e => {
+    const item = e.target.closest('.login-suggest-item');
+    if (!item) return;
+    nombreInput.value = item.dataset.nombre;
+    _nombreSel = item.dataset.nombre;
+    suggestBox.style.display = 'none';
+    updatePinUI();
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.field') || e.target.id !== 'login-nombre') {
+      if (!suggestBox.contains(e.target) && e.target !== nombreInput) {
+        suggestBox.style.display = 'none';
+      }
+    }
+  });
+
   document.getElementById('login-btn').addEventListener('click', doLogin);
 }
 
 function updatePinUI() {
   document.querySelectorAll('.pin-dot').forEach((d, i) =>
     d.classList.toggle('filled', i < _pin.length));
-  const nombre = document.getElementById('login-nombre').value;
+  const nombre = document.getElementById('login-nombre').value.trim();
   document.getElementById('login-btn').disabled = !nombre || _pin.length < 4;
   document.getElementById('login-error').style.display = 'none';
 }
 
 async function doLogin() {
-  const nombre = document.getElementById('login-nombre').value;
+  const nombre = document.getElementById('login-nombre').value.trim();
   const btn    = document.getElementById('login-btn');
   if (!nombre || _pin.length < 4) return;
 

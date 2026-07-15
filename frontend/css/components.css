@@ -165,6 +165,18 @@
 .badge-pending { background: #F0EAE0; color: var(--state-pending); }
 .badge-done    { background: #E8F2E9; color: var(--state-done); }
 .badge-neutral { background: var(--bg-muted); color: var(--state-neutral); }
+.badge-progress { background: #E3EEFB; color: #2563EB; }
+.badge-guest {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #FDECEA;
+  color: #C0392B;
+}
 
 /* ── Buttons ─────────────────────────────────────── */
 .btn {
@@ -600,6 +612,17 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+.aseo-card-link {
+  margin-top: 4px;
+}
+.aseo-card-link a {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* ── Loading ─────────────────────────────────────── */
 .loader {
@@ -617,6 +640,32 @@
   animation: spin 600ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.loader-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
+}
+.loader-full .spinner { width: 36px; height: 36px; border-width: 3px; }
+.loader-full-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.skeleton-card {
+  height: 92px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-2);
+  background: linear-gradient(90deg, var(--bg-muted) 25%, var(--border-light) 37%, var(--bg-muted) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shine 1.4s ease infinite;
+}
+@keyframes skeleton-shine {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
 
 /* ── Toast ───────────────────────────────────────── */
 .toast {

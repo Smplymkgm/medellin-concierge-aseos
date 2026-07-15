@@ -1,13 +1,13 @@
-import { getAseos, completarAseo } from '../api.js?v=5';
-import { getNombre }               from '../auth.js?v=5';
-import { logout }                  from '../router.js?v=5';
-import icons                       from '../components/icons2.js?v=5';
-import { MiniCalendar }            from '../components/calendar.js?v=5';
-import { openModal, closeModal }   from '../components/modal.js?v=5';
-import { showToast }               from './toast.js?v=5';
+import { getAseos, completarAseo, iniciarAseo } from '../api.js?v=12';
+import { getNombre, getImpersonar, clearImpersonar } from '../auth.js?v=12';
+import { logout, navigate }        from '../router.js?v=12';
+import icons                       from '../components/icons2.js?v=12';
+import { MiniCalendar }            from '../components/calendar.js?v=12';
+import { openModal, closeModal }   from '../components/modal.js?v=12';
+import { showToast }               from './toast.js?v=12';
 import {
   renderAseoCard, isToday, isUrgent, formatCOP, formatFecha, parseDate
-} from '../components/aseo-card.js?v=5';
+} from '../components/aseo-card.js?v=12';
 
 let _data      = null;
 let _activeTab = 'hoy';
@@ -19,6 +19,7 @@ let _loading   = false;
 
 export function renderAseadora() {
   return `
+  <div id="ase-impersonate-banner" style="display:none"></div>
   <div class="header" style="justify-content:space-between">
     <div>
       <div class="header-title" id="ase-title">Mis Aseos</div>
@@ -74,18 +75,40 @@ export function destroyAseadora() {
 }
 
 export async function activateAseadora() {
-  const nombre = getNombre();
+  const nombre = getImpersonar() || getNombre();
   document.getElementById('ase-title').textContent = 'Hola, ' + nombre;
+  renderImpersonateBanner();
   await loadData();
+}
+
+function renderImpersonateBanner() {
+  const banner = document.getElementById('ase-impersonate-banner');
+  if (!banner) return;
+  const nombre = getImpersonar();
+  if (!nombre) { banner.style.display = 'none'; banner.innerHTML = ''; return; }
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div style="background:#2563EB;color:#fff;padding:10px 16px;font-size:13px;
+      font-weight:600;display:flex;align-items:center;justify-content:space-between">
+      <span>👀 Viendo como ${nombre} — las acciones son reales</span>
+      <button id="ase-impersonate-exit" style="background:none;border:none;color:#fff;
+        font-weight:700;cursor:pointer;text-decoration:underline">Salir</button>
+    </div>`;
+  document.getElementById('ase-impersonate-exit').addEventListener('click', () => {
+    clearImpersonar();
+    _data = null;
+    navigate('admin');
+  });
 }
 
 async function loadData() {
   if (_loading) return;
   _loading = true;
-  const nombre = getNombre();
+  const nombre = getImpersonar() || getNombre();
   showLoading();
   try {
-    _data = await getAseos(nombre);
+    const result = await getAseos(nombre);
+    _data = result;
     const sub = document.getElementById('ase-sub');
     if (sub) sub.textContent = 'Actualizado ahora';
     switchTab(_activeTab);
@@ -144,6 +167,9 @@ function renderHoy() {
   content.querySelectorAll('[data-action="completar"]').forEach(btn => {
     btn.addEventListener('click', () => abrirModalCompletar(btn.dataset.codigo));
   });
+  content.querySelectorAll('[data-action="iniciar"]').forEach(btn => {
+    btn.addEventListener('click', () => doIniciar(btn.dataset.codigo, btn));
+  });
 }
 
 // ── Calendario ────────────────────────────────────────────────
@@ -183,6 +209,9 @@ function renderCalDayList(dateStr, allAseos) {
   </div>` + day.map(a => renderAseoCard(a, { onCompletar: isToday(a.checkout) })).join('');
   list.querySelectorAll('[data-action="completar"]').forEach(btn => {
     btn.addEventListener('click', () => abrirModalCompletar(btn.dataset.codigo));
+  });
+  list.querySelectorAll('[data-action="iniciar"]').forEach(btn => {
+    btn.addEventListener('click', () => doIniciar(btn.dataset.codigo, btn));
   });
 }
 
@@ -258,6 +287,24 @@ function renderHistorial() {
   content.innerHTML = html;
 }
 
+// ── Iniciar aseo ─────────────────────────────────────────────
+
+async function doIniciar(codigo, btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;margin:0"></div>';
+  try {
+    await iniciarAseo(codigo, getImpersonar() || getNombre());
+    _data = null;
+    await loadData();
+    showToast('Aseo iniciado', 'success');
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = original;
+    showToast(e.message, 'error');
+  }
+}
+
 // ── Modal completar aseo ───────────────────────────────────────
 
 function abrirModalCompletar(codigo) {
@@ -304,7 +351,7 @@ async function doCompletar(aseo) {
   btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;margin:0 auto"></div>';
 
   try {
-    await completarAseo(aseo.codigo, getNombre(), notas, videoLink);
+    await completarAseo(aseo.codigo, getImpersonar() || getNombre(), notas, videoLink);
     closeModal();
     showToast('Aseo completado', 'success');
     _data = null;
@@ -320,7 +367,14 @@ async function doCompletar(aseo) {
 
 function showLoading() {
   const content = document.getElementById('ase-content');
-  if (content) content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+  if (content) content.innerHTML = `
+    <div class="loader-full">
+      <div class="spinner"></div>
+      <span class="loader-full-text">Cargando aseos...</span>
+    </div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>`;
 }
 
 function showError(msg) {

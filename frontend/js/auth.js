@@ -32,3 +32,18 @@ export function getNombre() {
   const s = getSession();
   return s ? s.nombre : null;
 }
+
+// ── "Ver como" admin impersonation (in-memory only, never persisted) ──
+let _impersonando = null;
+
+export function setImpersonar(nombre) {
+  _impersonando = nombre;
+}
+
+export function clearImpersonar() {
+  _impersonando = null;
+}
+
+export function getImpersonar() {
+  return _impersonando;
+}

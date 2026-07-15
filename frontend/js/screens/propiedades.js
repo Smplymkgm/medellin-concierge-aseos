@@ -1,8 +1,8 @@
-import { getPropiedades, agregarPropiedad, actualizarPropiedad } from '../api.js?v=4';
-import icons                       from '../components/icons2.js?v=4';
-import { openModal, closeModal }   from '../components/modal.js?v=4';
-import { showToast }               from './toast.js?v=4';
-import { formatCOP }               from '../components/aseo-card.js?v=4';
+import { getPropiedades, agregarPropiedad, actualizarPropiedad } from '../api.js?v=12';
+import icons                       from '../components/icons2.js?v=12';
+import { openModal, closeModal }   from '../components/modal.js?v=12';
+import { showToast }               from './toast.js?v=12';
+import { formatCOP }               from '../components/aseo-card.js?v=12';
 
 let _props = null;
 
@@ -87,6 +87,14 @@ function abrirModalDetalle(prop, container) {
       <label class="field-label">Empleada automática</label>
       <input class="field-input" id="det-emp" type="text" value="${prop.empleadaAuto || ''}">
     </div>
+    <div class="field">
+      <label class="field-label">Link de Google Maps</label>
+      <input class="field-input" id="det-maps" type="url" value="${prop.mapsLink || ''}" placeholder="https://maps.app.goo.gl/...">
+    </div>
+    <div class="field">
+      <label class="field-label">Link de Airbnb</label>
+      <input class="field-input" id="det-airbnb" type="url" value="${prop.airbnbLink || ''}" placeholder="https://www.airbnb.com/rooms/...">
+    </div>
     ${prop.folderId ? `
     <div class="field">
       <label class="field-label">Carpeta Drive Videos</label>
@@ -108,6 +116,8 @@ function abrirModalDetalle(prop, container) {
       precioAseo:   parseInt(document.getElementById('det-precio').value) || 0,
       icalUrl:      document.getElementById('det-ical').value.trim(),
       empleadaAuto: document.getElementById('det-emp').value.trim(),
+      mapsLink:     document.getElementById('det-maps').value.trim(),
+      airbnbLink:   document.getElementById('det-airbnb').value.trim(),
     };
     const btn = document.getElementById('det-save');
     btn.disabled = true;
@@ -145,6 +155,14 @@ function abrirModalAgregar(container) {
       <label class="field-label">Empleada automática (opcional)</label>
       <input class="field-input" id="nw-emp" type="text">
     </div>
+    <div class="field">
+      <label class="field-label">Link de Google Maps (opcional)</label>
+      <input class="field-input" id="nw-maps" type="url" placeholder="https://maps.app.goo.gl/...">
+    </div>
+    <div class="field">
+      <label class="field-label">Link de Airbnb (opcional)</label>
+      <input class="field-input" id="nw-airbnb" type="url" placeholder="https://www.airbnb.com/rooms/...">
+    </div>
     <p class="field-hint" style="margin-bottom:var(--sp-3)">Se creará automáticamente una carpeta en Google Drive.</p>
     <button class="btn btn-primary btn-full" id="nw-save">
       ${icons.get('plus', 16)} Agregar propiedad
@@ -164,6 +182,8 @@ function abrirModalAgregar(container) {
       icalUrl,
       precioAseo:   parseInt(document.getElementById('nw-precio').value) || 0,
       empleadaAuto: document.getElementById('nw-emp').value.trim(),
+      mapsLink:     document.getElementById('nw-maps').value.trim(),
+      airbnbLink:   document.getElementById('nw-airbnb').value.trim(),
     };
     const btn = document.getElementById('nw-save');
     btn.disabled = true;

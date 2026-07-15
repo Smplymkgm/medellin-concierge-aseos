@@ -1,8 +1,8 @@
 // ── App entry point ────────────────────────────────────────────
-import { getSession }           from './auth.js?v=4';
-import { renderLogin, initLogin } from './screens/login.js?v=4';
-import { renderAseadora, initAseadora, activateAseadora } from './screens/aseadora.js?v=4';
-import { renderAdmin, initAdmin, activateAdmin }          from './screens/admin.js?v=11';
+import { getSession }           from './auth.js?v=12';
+import { renderLogin, initLogin } from './screens/login.js?v=12';
+import { renderAseadora, initAseadora, activateAseadora } from './screens/aseadora.js?v=12';
+import { renderAdmin, initAdmin, activateAdmin }          from './screens/admin.js?v=12';
 
 // Build the app shell
 const app = document.getElementById('app');

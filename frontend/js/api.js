@@ -23,6 +23,7 @@ export const login = (nombre, pin) => post('login', { nombre, pin });
 export const getAseos        = (nombre) => post('getAseos', { nombre });
 export const completarAseo   = (codigo, nombre, notas, videoLink) =>
   post('completarAseo', { codigo, nombre, notas: notas || '', videoLink: videoLink || '' });
+export const iniciarAseo     = (codigo, nombre) => post('iniciarAseo', { codigo, nombre });
 export const getUploadUrl    = (codigo, propiedad, filename) =>
   post('getUploadUrl', { codigo, propiedad, filename });
 export const registrarVideo  = (data) => post('registrarVideo', data);

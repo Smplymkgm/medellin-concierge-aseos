@@ -1,12 +1,13 @@
-import { getAllAseos, asignarAseo, moverAseo, agregarAseo, getPersonal as getPersonalApi, actualizarPersonal, getFormRespuestas, getPropiedades } from '../api.js?v=10';
-import { logout }                  from '../router.js?v=10';
-import icons                       from '../components/icons2.js?v=10';
-import { MiniCalendar }            from '../components/calendar.js?v=10';
-import { openModal, closeModal }   from '../components/modal.js?v=10';
-import { showToast }               from './toast.js?v=10';
+import { getAllAseos, asignarAseo, moverAseo, agregarAseo, getPersonal as getPersonalApi, actualizarPersonal, getFormRespuestas, getPropiedades } from '../api.js?v=12';
+import { logout, navigate }        from '../router.js?v=12';
+import { setImpersonar }           from '../auth.js?v=12';
+import icons                       from '../components/icons2.js?v=12';
+import { MiniCalendar }            from '../components/calendar.js?v=12';
+import { openModal, closeModal }   from '../components/modal.js?v=12';
+import { showToast }               from './toast.js?v=12';
 import {
   renderAseoCardAdmin, isUrgent, formatCOP, formatFecha, parseDate, isToday
-} from '../components/aseo-card.js?v=10';
+} from '../components/aseo-card.js?v=12';
 
 let _aseos       = null;
 let _personal    = null;
@@ -118,7 +119,7 @@ function switchTab(tab) {
 
 function renderAseos() {
   const content = document.getElementById('adm-content');
-  if (!_aseos) { content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`; return; }
+  if (!_aseos) { content.innerHTML = `<div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>`; return; }
 
   // Solo pendientes desde hoy en adelante, ordenados por fecha asc
   const hoyDate = new Date(); hoyDate.setHours(0, 0, 0, 0);
@@ -306,7 +307,7 @@ function abrirModalAgregarAseo() {
       closeModal();
       showToast('Aseo creado: ' + result.codigo, 'success');
       _aseos = null;
-      const { getAllAseos: reload } = await import('../api.js?v=9');
+      const { getAllAseos: reload } = await import('../api.js?v=12');
       _aseos = await reload();
       renderAseos();
     } catch(e) {
@@ -357,7 +358,7 @@ async function abrirSolicitudesOverlay() {
       </button>
     </div>
     <div id="sol-body" style="flex:1;overflow-y:auto;padding:16px">
-      <div class="loader"><div class="spinner"></div></div>
+      <div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>
     </div>`;
 
   document.body.appendChild(overlay);
@@ -529,7 +530,7 @@ function abrirModalMover(codigo) {
 
 function renderCalendarioAdmin() {
   const content = document.getElementById('adm-content');
-  if (!_aseos) { content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`; return; }
+  if (!_aseos) { content.innerHTML = `<div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>`; return; }
 
   content.innerHTML = `
     <div id="adm-cal-wrap" style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4)"></div>
@@ -577,7 +578,7 @@ function renderCalDayListAdmin(dateStr) {
 
 function renderHistorialAdmin() {
   const content = document.getElementById('adm-content');
-  if (!_aseos) { content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`; return; }
+  if (!_aseos) { content.innerHTML = `<div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>`; return; }
 
   // Calcular rangos de mes
   const now = new Date();
@@ -669,7 +670,7 @@ function renderHistorialAdmin() {
 
 function renderPropiedadesTab() {
   const content = document.getElementById('adm-content');
-  content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
+  content.innerHTML = `<div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>`;
   // Dynamic import to keep bundle split
   import('./propiedades.js').then(m => m.renderPropiedades(content));
 }
@@ -678,25 +679,36 @@ function renderPropiedadesTab() {
 
 function renderPersonalTab() {
   const content = document.getElementById('adm-content');
-  if (!_personal) { content.innerHTML = `<div class="loader"><div class="spinner"></div></div>`; return; }
+  if (!_personal) { content.innerHTML = `<div class="loader-full"><div class="spinner"></div><span class="loader-full-text">Cargando...</span></div>`; return; }
 
   let html = `<div class="card">`;
   for (const p of _personal) {
     html += `
-    <div class="list-item" data-nombre="${p.nombre}">
+    <div class="list-item" data-nombre="${p.nombre}" style="gap:8px">
       <div class="list-item-icon">${icons.get('user', 18)}</div>
-      <div class="list-item-body">
+      <div class="list-item-body" data-open="${p.nombre}" style="cursor:pointer">
         <div class="list-item-title">${p.nombre}</div>
         <div class="list-item-sub">${formatCOP(p.gananciaTotal)} ganados · ${p.email || 'Sin email'}</div>
       </div>
-      <div class="list-item-end">${icons.get('chevron-right', 16)}</div>
+      ${p.nombre !== 'Admin' ? `
+        <button class="btn btn-secondary" data-vercomo="${p.nombre}" style="padding:6px 10px;font-size:12px;flex-shrink:0">
+          ${icons.get('user', 13)} Ver como
+        </button>
+      ` : ''}
+      <div class="list-item-end" data-open="${p.nombre}" style="cursor:pointer">${icons.get('chevron-right', 16)}</div>
     </div>`;
   }
   html += `</div>`;
   content.innerHTML = html;
 
-  content.querySelectorAll('.list-item').forEach(item => {
-    item.addEventListener('click', () => abrirModalPersonal(item.dataset.nombre));
+  content.querySelectorAll('[data-open]').forEach(el => {
+    el.addEventListener('click', () => abrirModalPersonal(el.dataset.open));
+  });
+  content.querySelectorAll('[data-vercomo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setImpersonar(btn.dataset.vercomo);
+      navigate('aseadora');
+    });
   });
 }
 
