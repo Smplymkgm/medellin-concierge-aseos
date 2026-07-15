@@ -2,7 +2,7 @@
 import { getSession }           from './auth.js?v=4';
 import { renderLogin, initLogin } from './screens/login.js?v=4';
 import { renderAseadora, initAseadora, activateAseadora } from './screens/aseadora.js?v=4';
-import { renderAdmin, initAdmin, activateAdmin }          from './screens/admin.js?v=10';
+import { renderAdmin, initAdmin, activateAdmin }          from './screens/admin.js?v=11';
 
 // Build the app shell
 const app = document.getElementById('app');

@@ -1,4 +1,4 @@
-import { getAllAseos, asignarAseo, moverAseo, agregarAseo, getPersonal as getPersonalApi, actualizarPersonal, getFormRespuestas } from '../api.js?v=10';
+import { getAllAseos, asignarAseo, moverAseo, agregarAseo, getPersonal as getPersonalApi, actualizarPersonal, getFormRespuestas, getPropiedades } from '../api.js?v=10';
 import { logout }                  from '../router.js?v=10';
 import icons                       from '../components/icons2.js?v=10';
 import { MiniCalendar }            from '../components/calendar.js?v=10';
@@ -8,8 +8,9 @@ import {
   renderAseoCardAdmin, isUrgent, formatCOP, formatFecha, parseDate, isToday
 } from '../components/aseo-card.js?v=10';
 
-let _aseos     = null;
-let _personal  = null;
+let _aseos       = null;
+let _personal    = null;
+let _propiedades = null;
 let _activeTab = 'aseos';
 let _filtroAseadora   = '';
 let _filtroAsignacion = 'todos'; // 'todos' | 'asignados' | 'sin_asignar'
@@ -91,8 +92,9 @@ export async function activateAdmin() {
 
 async function loadData() {
   try {
-    _aseos    = await getAllAseos();
-    _personal = await getPersonalApi();
+    [_aseos, _personal, _propiedades] = await Promise.all([
+      getAllAseos(), getPersonalApi(), getPropiedades()
+    ]);
   } catch(e) {
     showError(e.message);
   }
@@ -216,18 +218,20 @@ function renderAseos() {
 
 function abrirModalAgregarAseo() {
   const aseadoras = (_personal || []).filter(p => p.nombre !== 'Admin').map(p => p.nombre);
-  const props     = [...new Set((_aseos || []).map(a => ({ id: a.idProp, nombre: a.propiedad }))
-    .filter(p => p.id)
-    .reduce((m, p) => { m.set(p.id, p); return m; }, new Map()).values())]
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  // Build property list from _propiedades (preferred) or fall back to _aseos
+  const propMap = new Map();
+  (_propiedades || []).forEach(p => propMap.set(p.id, { id: p.id, nombre: p.nombre, precio: p.precioAseo || 0 }));
+  (_aseos || []).forEach(a => { if (a.idProp && !propMap.has(a.idProp)) propMap.set(a.idProp, { id: a.idProp, nombre: a.propiedad, precio: 0 }); });
+  const props = [...propMap.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   openModal('Agregar aseo', `
     <div class="field">
       <label class="field-label">Propiedad</label>
       <select class="field-input" id="ag-propiedad">
         <option value="">Selecciona...</option>
-        ${props.map(p => `<option value="${p.id}|${p.nombre}">${p.nombre}</option>`).join('')}
-        <option value="otro|">Otra (escribir abajo)</option>
+        ${props.map(p => `<option value="${p.id}|${p.nombre}|${p.precio}">${p.nombre}</option>`).join('')}
+        <option value="otro||0">Otra (escribir abajo)</option>
       </select>
     </div>
     <div class="field" id="ag-prop-custom-wrap" style="display:none">
@@ -260,8 +264,12 @@ function abrirModalAgregarAseo() {
   `);
 
   document.getElementById('ag-propiedad').addEventListener('change', e => {
-    const isOtro = e.target.value.startsWith('otro|');
+    const parts   = e.target.value.split('|');
+    const isOtro  = parts[0] === 'otro';
     document.getElementById('ag-prop-custom-wrap').style.display = isOtro ? '' : 'none';
+    const precio  = Number(parts[2]) || 0;
+    if (!isOtro && precio) document.getElementById('ag-precio').value = precio;
+    else if (!isOtro)      document.getElementById('ag-precio').value = '';
   });
 
   document.getElementById('ag-cancel').addEventListener('click', closeModal);
@@ -337,7 +345,6 @@ function abrirFormPopup() {
 // ── Solicitudes (respuestas del Google Form) ──────────────────
 
 async function abrirSolicitudesOverlay() {
-  // Crear overlay
   const overlay = document.createElement('div');
   overlay.id = 'sol-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg-base);z-index:1000;display:flex;flex-direction:column;overflow:hidden;';
@@ -368,29 +375,55 @@ async function abrirSolicitudesOverlay() {
       return;
     }
 
-    // Mostrar cada respuesta como card
+    // Detectar índices de columnas clave
+    const iAseadora = headers.findIndex(h => /aseadora/i.test(h));
+    const iFecha    = headers.findIndex(h => /fecha/i.test(h));
+    const iCodigo   = headers.findIndex(h => /código|codigo|propiedad|dirección|direccion/i.test(h));
+
     body.innerHTML = rows.map((row, idx) => {
-      const rowsHtml = headers.map((h, j) => {
-        const val = row[j] || '';
+      const num      = rows.length - idx;
+      const aseadora = iAseadora >= 0 ? (row[iAseadora] || '—').trim() : '—';
+      const fecha    = iFecha    >= 0 ? (row[iFecha]    || '—').trim() : (row[0] || '—');
+      const codigo   = iCodigo   >= 0 ? (row[iCodigo]   || '—').trim() : '—';
+      const detailId = `sol-detail-${idx}`;
+
+      // Filas de detalle (omitir columnas clave ya mostradas en el header)
+      const keyIdxs = new Set([0, iAseadora, iFecha, iCodigo]);
+      const detalles = headers.map((h, j) => {
+        if (keyIdxs.has(j)) return '';
+        const val = (row[j] || '').trim();
         if (!val) return '';
-        return `<div style="margin-bottom:8px">
-          <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">${h}</div>
-          <div style="font-size:14px;color:var(--text-primary);line-height:1.4">${val}</div>
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+          <div style="font-size:11px;color:var(--text-tertiary);line-height:1.3">${h.trim()}</div>
+          <div style="font-size:13px;color:var(--text-primary);line-height:1.3">${val}</div>
         </div>`;
       }).join('');
 
-      // La primera columna suele ser la marca de tiempo (Timestamp)
-      const timestamp = row[0] || '';
-      return `<div class="aseo-card" style="margin-bottom:12px">
-        <div class="aseo-card-body" style="padding:12px 16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <span style="font-size:12px;font-weight:600;color:var(--accent)">#${rows.length - idx}</span>
-            <span style="font-size:11px;color:var(--text-tertiary)">${timestamp}</span>
+      return `<div style="margin-bottom:8px;border-radius:12px;overflow:hidden;border:1px solid var(--border-light)">
+        <!-- Botón desplegable -->
+        <button onclick="(function(btn){
+          var d=document.getElementById('${detailId}');
+          var open=d.style.display==='block';
+          d.style.display=open?'none':'block';
+          btn.querySelector('.sol-chevron').style.transform=open?'rotate(0deg)':'rotate(180deg)';
+        })(this)" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-surface);border:none;cursor:pointer;text-align:left;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+            <span style="font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0">#${num}</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${aseadora}</span>
           </div>
-          ${rowsHtml}
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <span style="font-size:12px;font-weight:700;color:var(--bg-surface);background:var(--accent);padding:2px 8px;border-radius:6px;letter-spacing:.3px">${codigo}</span>
+            <span style="font-size:11px;color:var(--text-tertiary)">${fecha}</span>
+            <span class="sol-chevron" style="color:var(--text-tertiary);transition:transform .2s">${icons.get('chevron-down', 16)}</span>
+          </div>
+        </button>
+        <!-- Detalle colapsable -->
+        <div id="${detailId}" style="display:none;padding:10px 14px 14px;background:var(--bg-base)">
+          ${detalles || '<p style="font-size:13px;color:var(--text-tertiary)">Sin detalles adicionales</p>'}
         </div>
       </div>`;
     }).join('');
+
   } catch(e) {
     document.getElementById('sol-body').innerHTML = `<div class="empty-state">
       ${icons.get('alert', 40)}

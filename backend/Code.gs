@@ -2,6 +2,9 @@
 // CONFIGURACIÓN
 // ============================================================
 
+var SPREADSHEET_ID = "1iKbcU81cr9g5IWxryOzCs73K6TiHsmT2iSPUp6O5s5Q";
+function getSS() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
+
 var CONFIG = {
   hojaMaestra:     "📋 Todas las Reservas",
   hojaAseos:       "🧹 Todos los Aseos",
@@ -142,7 +145,7 @@ function handleLogin(body) {
 // ============================================================
 
 function getPersonal() {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return [];
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
@@ -172,7 +175,7 @@ function handleGetAseos(body) {
   var nombre = String(body.nombre || "").trim();
   if (!nombre) return respond(false, null, "Nombre requerido");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   var proximos  = [];
   var historial = [];
@@ -251,7 +254,7 @@ function handleCompletarAseo(body) {
 
   if (!codigo || !nombre) return respond(false, null, "Codigo y nombre requeridos");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
@@ -314,7 +317,7 @@ function handleGetAllAseos(body) {
   var fechaInicio    = String(body.fechaInicio    || "").trim();
   var fechaFin       = String(body.fechaFin       || "").trim();
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return respond(true, []);
 
@@ -372,7 +375,7 @@ function handleAsignarAseo(body) {
   var aseadora = String(body.aseadora || "").trim();
   if (!codigo) return respond(false, null, "Codigo requerido");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
@@ -425,7 +428,7 @@ function handleMoverAseo(body) {
   if (!codigo || !nuevaFecha) return respond(false, null, "Codigo y nuevaFecha requeridos");
   if (!fechaADate(nuevaFecha)) return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
@@ -473,7 +476,7 @@ function handleAgregarAseo(body) {
   if (!propiedad || !checkout) return respond(false, null, "Propiedad y fecha requeridas");
   if (!fechaADate(checkout))   return respond(false, null, "Fecha invalida (usar dd/MM/yyyy)");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja) return respond(false, null, "Hoja Aseos no encontrada");
 
@@ -514,7 +517,7 @@ function handleAgregarAseo(body) {
 // ============================================================
 
 function getPropiedades() {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return [];
   var lastCol = Math.max(hoja.getLastColumn(), 7);
@@ -524,8 +527,8 @@ function getPropiedades() {
     var r = datos[i];
     var id  = String(r[0]).trim();
     var nom = String(r[1]).trim();
-    var url = String(r[4]).trim();
-    if (!id || !nom || !url) continue;
+    var url = String(r[4] || "").trim();
+    if (!id || !nom) continue;
     props.push({
       id:            id,
       nombre:        nom,
@@ -553,7 +556,7 @@ function handleAgregarPropiedad(body) {
 
   if (!nombre || !icalUrl) return respond(false, null, "Nombre e iCal URL requeridos");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja) return respond(false, null, "Hoja Propiedades no encontrada");
 
@@ -586,7 +589,7 @@ function handleActualizarPropiedad(body) {
   var datos = body.datos || {};
   if (!id) return respond(false, null, "ID requerido");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
@@ -611,7 +614,7 @@ function handleActualizarPropiedad(body) {
 function handleGetPersonal(body) {
   var personal = getPersonal();
   // También calcular ganancias de cada aseadora
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   var ganancias = {};
 
@@ -645,7 +648,7 @@ function handleActualizarPersonal(body) {
   var datos  = body.datos || {};
   if (!nombre) return respond(false, null, "Nombre requerido");
 
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
 
@@ -745,7 +748,7 @@ function handleRegistrarVideo(body) {
 }
 
 function registrarVideoEnHoja(data) {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaVideos);
   if (!hoja) {
     hoja = ss.insertSheet(CONFIG.hojaVideos);
@@ -804,7 +807,7 @@ function crearCarpetaPropiedad(nombrePropiedad) {
 }
 
 function actualizarFolderIdPropiedad(nombrePropiedad, folderId) {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return;
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 2).getValues();
@@ -853,7 +856,7 @@ function handleGetFormRespuestas(body) {
 // ============================================================
 
 function autoCompletarAseosPasados() {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaAseos);
   if (!hoja || hoja.getLastRow() < 2) return;
 
@@ -914,7 +917,7 @@ function onOpen() {
 // ============================================================
 
 function agregarAdmin() {
-  var ss   = SpreadsheetApp.getActiveSpreadsheet();
+  var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
   if (!hoja) { Logger.log("Hoja Personal no existe"); return; }
 
@@ -922,7 +925,7 @@ function agregarAdmin() {
   if (hoja.getLastRow() > 1) {
     var nombres = hoja.getRange(2, 2, hoja.getLastRow()-1, 1).getValues().flat().map(String);
     if (nombres.some(function(n){ return n.toLowerCase() === "admin"; })) {
-      SpreadsheetApp.getActiveSpreadsheet().toast("Admin ya existe en Personal.", "Setup", 4);
+      getSS().toast("Admin ya existe en Personal.", "Setup", 4);
       return;
     }
   }
@@ -931,7 +934,7 @@ function agregarAdmin() {
   hoja.getRange(fi, 1, 1, 7).setValues([[true, "Admin", "2025", "michaelmgm1249@gmail.com", "", "", ""]]);
   hoja.getRange(fi, 3, 1, 1).setNumberFormat("@"); // PIN como texto
   hoja.getRange(fi, 1, 1, 7).setBackground("#fff9e6").setFontFamily("Arial").setFontSize(10);
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Admin agregado a Personal (PIN: 2025).", "Setup", 5);
+  getSS().toast("✅ Admin agregado a Personal (PIN: 2025).", "Setup", 5);
 }
 
 function crearTriggersAutomaticos() {
@@ -939,6 +942,6 @@ function crearTriggersAutomaticos() {
   ScriptApp.newTrigger("sincronizarCalendarios").timeBased().everyHours(6).create();
   ScriptApp.newTrigger("sincronizarGoogleCalendar").timeBased().everyHours(2).create();
   ScriptApp.newTrigger("autoCompletarAseosPasados").timeBased().atHour(22).everyDays(1).create();
-  SpreadsheetApp.getActiveSpreadsheet()
+  getSS()
     .toast("✅ Triggers creados (Airbnb c/6h, Calendar c/2h, Auto-completar 10PM)", "Triggers", 6);
 }
