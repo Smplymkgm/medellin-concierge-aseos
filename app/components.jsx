@@ -12,6 +12,17 @@ function StatusBadge({ status }) {
   );
 }
 
+/* ---- Loading state: spinner + label, replaces bare spinners on
+   first-fetch screens (see ctx.dataLoaded in app.jsx) ---- */
+function LoadingState({ label }) {
+  return (
+    <div className="loading-state">
+      <span className="loading-spinner"></span>
+      <div className="body sec">{label || 'Cargando…'}</div>
+    </div>
+  );
+}
+
 /* ---- App bar ---- */
 function AppBar({ title, subtitle, actions, onLogout }) {
   return (
@@ -36,9 +47,18 @@ function Avatar({ name, className = 'avatar' }) {
 /* ============================================================
    Aseo card — expandable, status border, optional priority
    ============================================================ */
-function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSinForm, onMoverFecha, role }) {
+function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSinForm, onMoverFecha, onIniciar, role }) {
   const a = aseoEnriched(aseo);
+  const [iniciando, setIniciando] = useState(false);
   const cls = ['aseo-card', 's-' + a.status, a.priority ? 'priority' : '', open ? 'open' : ''].join(' ');
+  const huespedesHoy = role === 'aseadora' && a.status !== 'done' && a.checkin && sameDay(a.checkin, TODAY);
+
+  function handleIniciar(e) {
+    e.stopPropagation();
+    if (iniciando || !onIniciar) return;
+    setIniciando(true);
+    Promise.resolve(onIniciar(a)).finally(() => setIniciando(false));
+  }
   return (
     <div className={cls}>
       <div className="aseo-head" onClick={onToggle}>
@@ -55,6 +75,8 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
           </div>
           <div className="row gap-base" style={{ marginTop: 10, flexWrap: 'wrap' }}>
             <StatusBadge status={a.status} />
+            {a.iniciado && a.status !== 'done' && <StatusBadge status="iniciado" />}
+            {huespedesHoy && <span className="warn-badge"><Icon name="alert" size={12} /> Ingresan huéspedes</span>}
             {a.status === 'done' && (
               <span className={'form-badge ' + (a.formFilled ? 'ok' : 'miss')}>
                 {a.formFilled ? '✓ Form completado' : '⚠ Form pendiente'}
@@ -86,6 +108,16 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                 <span className="detail-value">{a.direccion}</span>
               </div>
             </div>
+            {(a.mapsLink || a.airbnbLink) && (
+              <div className="link-row">
+                {a.airbnbLink && (
+                  <a className="link-chip" href={a.airbnbLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="home" size={14} /> Ver propiedad</a>
+                )}
+                {a.mapsLink && (
+                  <a className="link-chip" href={a.mapsLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="location" size={14} /> Dirección</a>
+                )}
+              </div>
+            )}
             {(() => {
               const tipoLabels = {
                 chapa_digital: 'Chapa digital',
@@ -165,7 +197,14 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
             {a.status !== 'done' && (
               <div className="aseo-actions" style={{ flexWrap: 'wrap' }}>
                 {role === 'aseadora'
-                  ? <button className="btn btn-primary btn-block" onClick={() => onComplete(a)}>Completar</button>
+                  ? <>
+                      {!a.iniciado && onIniciar && (
+                        <button className="btn btn-secondary" onClick={handleIniciar} disabled={iniciando}>
+                          {iniciando ? <span className="loading-spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span> : 'Iniciar'}
+                        </button>
+                      )}
+                      <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => onComplete(a)}>Completar</button>
+                    </>
                   : <>
                       <button className="btn btn-primary" onClick={() => onReassign && onReassign(a)}>
                         {a.asignada ? 'Reasignar' : 'Asignar'}
@@ -327,4 +366,4 @@ function Sheet({ open, onClose, title, children, footer, height }) {
   );
 }
 
-Object.assign(window, { StatusBadge, AppBar, Avatar, AseoCard, CompactCard, BottomNav, Sheet, SegControl, CheckRow });
+Object.assign(window, { StatusBadge, AppBar, Avatar, AseoCard, CompactCard, BottomNav, Sheet, SegControl, CheckRow, LoadingState });

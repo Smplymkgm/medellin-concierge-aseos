@@ -83,6 +83,7 @@ function doPost(e) {
     if (action === "getAseos")            return handleGetAseos(body);
     if (action === "completarAseo")       return handleCompletarAseo(body);
     if (action === "completar")           return handleCompletarAseo(body); // alias usado por la app
+    if (action === "iniciarAseo")         return handleIniciarAseo(body);
     if (action === "getAllAseos")          return handleGetAllAseos(body);
     if (action === "asignarAseo")         return handleAsignarAseo(body);
     if (action === "moverAseo")           return handleMoverAseo(body);
@@ -107,7 +108,7 @@ function doPost(e) {
       var n2 = body.nombre || '';
       var r2 = body.rol || 'aseadora';
       var p2 = getPersonal().map(function(u) { return { nombre: u.nombre, rol: u.nombre.toLowerCase()==='admin'?'admin':'aseadora', pin: u.pin, email: u.email, tel: u.telefono||'', cedula: u.cedula||'', banco: u.banco||'', tipoCuenta: u.tipoCuenta||'', numeroCuenta: u.numeroCuenta||'', nombreCompleto: u.nombreCompleto||'' }; });
-      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null, icalUrls: p.icalUrls || [], empleadaAuto: p.empleadaAuto || '' }; });
+      var pr2 = getPropiedades().map(function(p) { return { id: p.id, nombre: p.nombre, precio: p.precioAseo, acceso: p.acceso, accesoEstructurado: p.accesoEstructurado || null, icalUrls: p.icalUrls || [], empleadaAuto: p.empleadaAuto || '', mapsLink: p.mapsLink || '', airbnbLink: p.airbnbLink || '' }; });
       var a2 = r2==='admin' ? getAllAseos() : getAseosPorAseadora(n2);
       return respond(true, { personal: p2, propiedades: pr2, aseos: a2 });
     }
@@ -526,6 +527,94 @@ function handleCompletarAseo(body) {
         codigo: codigo, propiedad: propiedadAseo, aseadora: nombre,
         checkout: checkoutStr, videoLink: videoLink, notas: notas,
       });
+    }
+
+    return respond(true, null);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
+}
+
+// ============================================================
+// ASEADORA — iniciarAseo (marca "Iniciado", antes de completar)
+// ============================================================
+// Mismo patrón que handleCompletarAseo: busca/crea la fila en "Todos los
+// Aseos", pone estado "Iniciado" en col 8 y sincroniza col 7 (estado) del
+// master. No toca el form (cols 14+) ni el precio/aseadora.
+
+function handleIniciarAseo(body) {
+  var codigo = String(body.codigo || "").trim();
+  var nombre = String(body.nombre || "").trim();
+  if (!codigo) return respond(false, null, "Codigo requerido");
+  if (!nombre) return respond(false, null, "Codigo y nombre requeridos");
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado, intenta de nuevo"); }
+
+  try {
+    var ss   = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+    if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+    var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+    var fila = -1;
+    for (var i = 0; i < datos.length; i++) {
+      if (String(datos[i][0]) !== codigo) continue;
+      if (String(datos[i][6]).trim() && String(datos[i][6]).trim() !== nombre)
+        return respond(false, null, "No autorizado");
+      fila = i + 2;
+      break;
+    }
+
+    var master = ss.getSheetByName(CONFIG.hojaMaestra);
+    var masterRow = -1;
+
+    // Si el pendiente vive solo en el master, crear la fila en "Todos los
+    // Aseos" igual que handleCompletarAseo, pero con estado "Iniciado".
+    if (fila === -1) {
+      if (!master || master.getLastRow() < 2) return respond(false, null, "Aseo no encontrado");
+      var mAll  = master.getRange(2, 1, master.getLastRow()-1, 11).getValues();
+      var mDisp = master.getRange(2, 4, master.getLastRow()-1, 2).getDisplayValues();
+      var resv = null;
+      for (var k = 0; k < mAll.length; k++) {
+        if (String(mAll[k][0]).trim() === codigo) { resv = mAll[k]; masterRow = k + 2; break; }
+      }
+      if (!resv) return respond(false, null, "Aseo no encontrado");
+      var asignadaM = String(resv[7] || "").trim();
+      if (asignadaM && asignadaM !== nombre) return respond(false, null, "No autorizado");
+
+      var checkinStrN  = mDisp[masterRow-2][0] || fechaToStr(resv[3]);
+      var checkoutStrN = mDisp[masterRow-2][1] || fechaToStr(resv[4]);
+      var propiedadAseo = String(resv[2] || "");
+      hoja.appendRow([
+        codigo, String(resv[1]||""), propiedadAseo, checkinStrN, checkoutStrN,
+        Number(resv[5])||0, nombre, "Iniciado", Number(resv[8])||0,
+        String(resv[9]||""), String(resv[10]||""), "", ""
+      ]);
+      fila = hoja.getLastRow();
+      hoja.getRange(fila, 4, 1, 2).setNumberFormat("@");
+      hoja.getRange(fila, 9, 1, 1).setNumberFormat("$#,##0");
+    } else {
+      // No permitir "iniciar" un aseo ya completado/cancelado
+      var estadoActual = String(datos[fila-2][7] || "");
+      if (estadoActual === "Completado" || estadoActual === "Cancelado") {
+        return respond(false, null, "El aseo ya no está pendiente");
+      }
+    }
+
+    hoja.getRange(fila, 8).setValue("Iniciado");
+
+    // Sincronizar estado en el master (col 7 = estado, igual que handleCompletarAseo)
+    if (master && master.getLastRow() >= 2) {
+      if (masterRow === -1) {
+        var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
+        for (var j = 0; j < mc.length; j++) {
+          if (String(mc[j][0]) === codigo) { masterRow = j + 2; break; }
+        }
+      }
+      if (masterRow !== -1) {
+        master.getRange(masterRow, 7).setValue("Iniciado");
+      }
     }
 
     return respond(true, null);
@@ -1012,7 +1101,9 @@ function getPropiedades() {
   var ss   = getSS();
   var hoja = ss.getSheetByName(CONFIG.hojaPropiedades);
   if (!hoja || hoja.getLastRow() < 2) return [];
-  var lastCol = Math.max(hoja.getLastColumn(), 9);
+  // Col J (10) = mapsLink, Col K (11) = airbnbLink — nuevas, van DESPUÉS de
+  // I "Activa" para no correr ninguna columna existente.
+  var lastCol = Math.max(hoja.getLastColumn(), 11);
   var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, lastCol).getValues();
   var props = [];
   for (var i = 0; i < datos.length; i++) {
@@ -1045,6 +1136,8 @@ function getPropiedades() {
       empleadaAuto:        String(r[5] || "").trim(),
       folderId:            String(r[6] || "").trim(),
       accesoEstructurado:  accesoStruct,
+      mapsLink:            String(r[9]  || "").trim(),
+      airbnbLink:          String(r[10] || "").trim(),
     });
   }
   return props;
@@ -1066,6 +1159,8 @@ function handleAgregarPropiedad(body) {
   var icalUrl   = icalLista.join("\n");
   var precioAseo = Number(datos.precioAseo) || 0;
   var empleadaAuto = String(datos.empleadaAuto || "").trim();
+  var mapsLink   = String(datos.mapsLink   || "").trim();
+  var airbnbLink = String(datos.airbnbLink || "").trim();
 
   if (!nombre) return respond(false, null, "Nombre requerido");
 
@@ -1091,6 +1186,12 @@ function handleAgregarPropiedad(body) {
   hoja.getRange(fi, 1, 1, 7)
     .setBackground(fi % 2 === 0 ? "#f8f9fa" : "#ffffff")
     .setFontFamily("Arial").setFontSize(10);
+
+  // Col J/K (10/11) = mapsLink/airbnbLink — nuevas, no corren las columnas
+  // existentes (H "Acceso Estructurado" e I "Activa" se dejan como estén).
+  if (mapsLink || airbnbLink) {
+    hoja.getRange(fi, 10, 1, 2).setValues([[mapsLink, airbnbLink]]);
+  }
 
   return respond(true, { id: nuevoId });
 }
@@ -1174,6 +1275,9 @@ function handleActualizarPropiedad(body) {
       if (val && typeof val === "object") val = JSON.stringify(val);
       hoja.getRange(fila, 8).setValue(String(val || ""));
     }
+    // Col J/K (10/11) = mapsLink/airbnbLink — nuevas, después de I "Activa".
+    if (datos.mapsLink   !== undefined) hoja.getRange(fila, 10).setValue(datos.mapsLink);
+    if (datos.airbnbLink !== undefined) hoja.getRange(fila, 11).setValue(datos.airbnbLink);
     return respond(true, null);
   }
   return respond(false, null, "Propiedad no encontrada: " + id);

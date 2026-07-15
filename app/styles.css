@@ -26,6 +26,7 @@
   --state-done:    #5A7A5E;
   --state-neutral: #A09890;
   --state-unassigned: #A09890; /* alias de --state-neutral para lookups dinámicos */
+  --state-iniciado: #4A7FA6;
 
   /* Tintes suaves de estado (para selección de checklist) */
   --state-done-subtle:    #E7EFE7;
@@ -207,6 +208,8 @@ html, body {
 .status.s-unassigned .dot { background: var(--state-neutral); }
 .status.s-cancelled    { color: #999; }
 .status.s-cancelled .dot { background: #ccc; }
+.status.s-iniciado { color: var(--state-iniciado); }
+.status.s-iniciado .dot { background: var(--state-iniciado); }
 
 /* expanded panel */
 .aseo-expand {
@@ -331,6 +334,17 @@ html, body {
   padding: 13px 40px 13px 14px;
   cursor: pointer;
 }
+.autosuggest-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(28,25,23,0.12); overflow: hidden; max-height: 180px; overflow-y: auto;
+}
+.autosuggest-item {
+  display: block; width: 100%; text-align: left; padding: 11px 14px; border: none; background: none;
+  font-family: inherit; font-size: 14px; color: var(--text-primary); cursor: pointer;
+}
+.autosuggest-item:active, .autosuggest-item:hover { background: var(--bg-subtle); }
+
 .select .chev {
   position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
   pointer-events: none; color: var(--text-tertiary);
@@ -580,6 +594,47 @@ html, body {
   padding: var(--sp-2xl) var(--sp-lg); text-align: center; color: var(--text-tertiary);
   display: flex; flex-direction: column; align-items: center; gap: var(--sp-base);
 }
+
+/* ---- Loading state (spinner + label), used instead of bare spinners
+   whenever a screen is waiting on its first data fetch ---- */
+.loading-state {
+  padding: var(--sp-2xl) var(--sp-lg); text-align: center; color: var(--text-tertiary);
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-base);
+}
+.loading-spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid var(--border-light); border-top-color: var(--accent);
+  animation: spin360 .8s linear infinite;
+}
+.loading-skel {
+  height: 84px; border-radius: 14px; background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-muted) 37%, var(--bg-subtle) 63%);
+  background-size: 400% 100%; animation: skelshine 1.4s ease infinite;
+}
+@keyframes skelshine { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+/* ---- Warning badge: guests checking in same day as the aseo ---- */
+.warn-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px; line-height: 1.4;
+  background: rgba(196,98,45,0.14); color: var(--accent);
+}
+
+/* ---- Property quick links (maps / airbnb) on the aseo card ---- */
+.link-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.link-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+  color: var(--accent); text-decoration: none; padding: 6px 10px; border-radius: 8px;
+  background: var(--accent-subtle); border: 1px solid transparent;
+}
+.link-chip:active { background: var(--accent-subtle); border-color: var(--accent); }
+
+/* ---- "Ver como" impersonation banner (admin) ---- */
+.viewas-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-base);
+  background: var(--state-iniciado); color: #fff;
+  padding: 10px var(--sp-lg); font-size: 13px; font-weight: 500;
+}
+.viewas-banner .btn { flex-shrink: 0; }
 
 /* FAB for admin add */
 .fab {
