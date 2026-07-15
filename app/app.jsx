@@ -110,6 +110,8 @@ function transformAseos(apiAseos) {
       checkout: checkout,            // día del aseo (puede diferir de la reserva)
       checkoutReserva: checkoutReserva,  // salida real de la reserva (Airbnb)
       status:   status,
+      estado:   a.estado || '',
+      iniciado: a.estado === 'Iniciado',
       asignada: a.asignada || null,
       priority: isToday && !isDone,
       notas:    a.notas || '',
@@ -138,6 +140,8 @@ function transformProps(apiProps) {
       accesoEstructurado: struct,
       icalUrls: p.icalUrls || (p.icalUrl ? [p.icalUrl] : []),
       empleadaAuto: p.empleadaAuto || '',
+      mapsLink: p.mapsLink || '',
+      airbnbLink: p.airbnbLink || '',
     };
   });
 }
@@ -163,9 +167,24 @@ function transformPersonal(apiPersonal) {
 
 function Login({ personalList, onLogin }) {
   const [nombre, setNombre] = useStateL(personalList.length ? personalList[0].nombre : '');
+  const [query, setQuery]   = useStateL(personalList.length ? personalList[0].nombre : '');
+  const [suggestOpen, setSuggestOpen] = useStateL(false);
   const [pin, setPin]       = useStateL('');
   const [error, setError]   = useStateL(false);
   const [loading, setLoading] = useStateL(false);
+
+  const suggestions = query.trim()
+    ? personalList.filter(p => p.nombre.toLowerCase().includes(query.trim().toLowerCase()))
+    : personalList;
+
+  function pickNombre(n) {
+    setNombre(n); setQuery(n); setSuggestOpen(false); setPin(''); setError(false);
+  }
+  function onQueryChange(v) {
+    setQuery(v); setSuggestOpen(true);
+    const exact = personalList.find(p => p.nombre.toLowerCase() === v.trim().toLowerCase());
+    if (exact) setNombre(exact.nombre);
+  }
 
   function press(n) { setError(false); setPin(p => (p.length >= 4 ? p : p + n)); }
   function back()   { setError(false); setPin(p => p.slice(0, -1)); }
@@ -195,14 +214,30 @@ function Login({ personalList, onLogin }) {
         <div className="login-sub caption">Gestión de aseos · Medellín</div>
       </div>
 
-      <div className="field">
+      <div className="field" style={{ position: 'relative' }}>
         <label className="label field-label sec">Nombre</label>
-        <div className="select">
-          <select value={nombre} onChange={e => { setNombre(e.target.value); setPin(''); setError(false); }}>
-            {personalList.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}{p.rol === 'admin' ? ' (admin)' : ''}</option>)}
-          </select>
-          <Icon name="chevron-down" size={20} className="chev" />
+        <div className="text-input" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="user" size={16} style={{ color: 'var(--text-tertiary)' }} />
+          <input
+            style={{ border: 'none', background: 'transparent', flex: 1, fontFamily: 'inherit', fontSize: 15, outline: 'none', color: 'var(--text-primary)' }}
+            value={query}
+            onChange={e => onQueryChange(e.target.value)}
+            onFocus={() => setSuggestOpen(true)}
+            onBlur={() => setTimeout(() => setSuggestOpen(false), 120)}
+            placeholder="Escribe tu nombre…"
+            autoComplete="off"
+          />
         </div>
+        {suggestOpen && suggestions.length > 0 && (
+          <div className="autosuggest-list">
+            {suggestions.map(p => (
+              <button type="button" key={p.nombre} className="autosuggest-item"
+                onMouseDown={() => pickNombre(p.nombre)}>
+                {p.nombre}{p.rol === 'admin' ? ' (admin)' : ''}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="field">
@@ -247,6 +282,11 @@ function App() {
   const [tab, setTab]           = useStateL('hoy');
   const [openId, setOpenId]     = useStateL(null);
   const [propId, setPropId]     = useStateL(null);
+  const [dataLoaded, setDataLoaded] = useStateL(false);
+
+  // "Ver como" admin impersonation — puramente en memoria, NUNCA toca
+  // localStorage/sesión real. viewAs = nombre de la aseadora impersonada.
+  const [viewAs, setViewAs] = useStateL(null);
 
   // Login screen state
   const [personalList, setPersonalList] = useStateL([]);
@@ -308,8 +348,29 @@ function App() {
         }
       })
       .catch(function() {})
-      .finally(function() { setSyncing(false); });
+      .finally(function() { setSyncing(false); setDataLoaded(true); });
   }
+
+  function doIniciar(a) {
+    const prev = aseos;
+    setAseos(list => list.map(x => x.codigo === a.codigo ? { ...x, iniciado: true } : x));
+    return gasPost({ action: 'iniciarAseo', codigo: a.codigo, nombre: a.asignada || '' })
+      .then(res => {
+        if (!res || !res.ok) {
+          setAseos(prev);
+          showToast('Error: ' + ((res && res.error) || 'sin conexión'));
+        }
+      })
+      .catch(() => {
+        setAseos(prev);
+        showToast('Error de conexión, no se guardó');
+      });
+  }
+
+  // Ver como <aseadora>: entra/sale de la vista de una aseadora sin tocar la
+  // sesión real. Las acciones que tome dentro SÍ pegan al backend real.
+  function startViewAs(nombre) { setViewAs(nombre); setTab('hoy'); setOpenId(null); setPropId(null); }
+  function exitViewAs() { setViewAs(null); setTab('aseos'); setOpenId(null); setPropId(null); }
 
   function login(userInfo) {
     const nombre = userInfo.nombre;
@@ -515,6 +576,7 @@ function App() {
         claves: { acceso: datos.acceso || '' },
         accesoEstructurado: datos.accesoEstructurado || null,
         icalUrls: icalUrls,
+        mapsLink: datos.mapsLink || '', airbnbLink: datos.airbnbLink || '',
       };
       const next = [...props, nuevo];
       setLiveProps(next); setProps(next);
@@ -528,6 +590,8 @@ function App() {
           acceso: datos.acceso,
           accesoEstructurado: datos.accesoEstructurado,
           icalUrls: icalUrls,
+          mapsLink: datos.mapsLink || '',
+          airbnbLink: datos.airbnbLink || '',
         },
       }).then(res => {
         if (res && res.ok) {
@@ -555,6 +619,7 @@ function App() {
           claves: { ...p.claves, acceso: datos.acceso },
           accesoEstructurado: datos.accesoEstructurado || null,
           icalUrls: icalUrls,
+          mapsLink: datos.mapsLink || '', airbnbLink: datos.airbnbLink || '',
         }
       : p);
     setLiveProps(next);
@@ -572,6 +637,8 @@ function App() {
         acceso: datos.acceso,
         accesoEstructurado: datos.accesoEstructurado,
         icalUrls: icalUrls,
+        mapsLink: datos.mapsLink || '',
+        airbnbLink: datos.airbnbLink || '',
       },
     }).then(res => {
       if (res && res.ok) showToast('Propiedad actualizada');
@@ -689,7 +756,7 @@ function App() {
         <div className="screen" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
           <div className="login-mark"><Icon name="home" size={26} /></div>
           <div className="login-title">Medcon Cleanings</div>
-          <div className="caption sec">Conectando…</div>
+          <LoadingState label="Conectando…" />
         </div>
       </div>
     );
@@ -705,25 +772,32 @@ function App() {
     );
   }
 
-  const isAdmin = session.rol === 'admin';
+  const realIsAdmin = session.rol === 'admin';
+  // Mientras se está "Viendo como <aseadora>", la app se comporta como si
+  // esa aseadora hubiera iniciado sesión (mismo rol/nombre para pantallas y
+  // llamadas a la API), pero session/localStorage NO cambian.
+  const isAdmin = realIsAdmin && !viewAs;
+  const effectiveUser = viewAs || session.nombre;
   const ctx = {
-    user: session.nombre, aseos, props, personal, openId, toggle, logout,
+    user: effectiveUser, aseos, props, personal, openId, toggle, logout,
     openCompletar, openReassign, openProp: (id) => setPropId(id), closeProp: () => setPropId(null),
     openEditProp, openAddProp, openAddCleaner, openEditCleaner,
-    openMoverFecha,
+    openMoverFecha, doIniciar,
     doFinalizarSinForm, doDeleteProp,
     calMonth, calYear, calSel, setCalSel, shiftMonth, goToAseo,
     filter, setFilter,
     openSync: () => {
       if (syncing) return;
-      loadDataFor(session.nombre, session.rol).then(() => showToast('Datos actualizados'));
+      loadDataFor(effectiveUser, isAdmin ? 'admin' : 'aseadora').then(() => showToast('Datos actualizados'));
     },
     syncing,
     lastSync,
+    dataLoaded,
+    viewAs, startViewAs, exitViewAs,
   };
 
   // urgent count for nav badge
-  const urgentMine = aseos.filter(a => (isAdmin ? true : a.asignada === session.nombre) && (a.status === 'urgent' || a.priority) && a.status !== 'done').length;
+  const urgentMine = aseos.filter(a => (isAdmin ? true : a.asignada === effectiveUser) && (a.status === 'urgent' || a.priority) && a.status !== 'done').length;
 
   const cleanerTabs = [
     { id: 'hoy', label: 'Aseos', icon: 'list', badge: urgentMine || null },
@@ -756,6 +830,14 @@ function App() {
   return (
     <div className="stage">
       <div className="screen">
+        {viewAs && (
+          <div className="viewas-banner">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="eye" size={16} /> Viendo como {viewAs} — las acciones que tomes aquí son reales y se guardan en el sistema.
+            </span>
+            <button className="btn btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} onClick={exitViewAs}>Salir</button>
+          </div>
+        )}
         {screen}
 
         {isAdmin && tab === 'aseos' && !propId && (
