@@ -832,7 +832,9 @@ function App() {
       <div className="screen">
         {viewAs && (
           <div className="viewas-banner">
-            <span>👁 Viendo como {viewAs} — las acciones que tomes aquí son reales y se guardan en el sistema.</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="eye" size={16} /> Viendo como {viewAs} — las acciones que tomes aquí son reales y se guardan en el sistema.
+            </span>
             <button className="btn btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} onClick={exitViewAs}>Salir</button>
           </div>
         )}

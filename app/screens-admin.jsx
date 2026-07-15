@@ -317,9 +317,9 @@ function PersonalScreen({ ctx }) {
                 <div className="num">{fmtCOP(gan)}</div>
                 <div className="label ter" style={{ textTransform: 'capitalize' }}>{mesActual}</div>
                 {ctx.startViewAs && (
-                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }}
+                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                     onClick={e => { e.stopPropagation(); ctx.startViewAs(c.nombre); }}>
-                    👁 Ver como
+                    <Icon name="eye" size={14} /> Ver como
                   </button>
                 )}
               </div>

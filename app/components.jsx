@@ -76,7 +76,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
           <div className="row gap-base" style={{ marginTop: 10, flexWrap: 'wrap' }}>
             <StatusBadge status={a.status} />
             {a.iniciado && a.status !== 'done' && <StatusBadge status="iniciado" />}
-            {huespedesHoy && <span className="warn-badge">⚠️ Ingresan huéspedes</span>}
+            {huespedesHoy && <span className="warn-badge"><Icon name="alert" size={12} /> Ingresan huéspedes</span>}
             {a.status === 'done' && (
               <span className={'form-badge ' + (a.formFilled ? 'ok' : 'miss')}>
                 {a.formFilled ? '✓ Form completado' : '⚠ Form pendiente'}
@@ -111,10 +111,10 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
             {(a.mapsLink || a.airbnbLink) && (
               <div className="link-row">
                 {a.airbnbLink && (
-                  <a className="link-chip" href={a.airbnbLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}>🏠 Ver propiedad</a>
+                  <a className="link-chip" href={a.airbnbLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="home" size={14} /> Ver propiedad</a>
                 )}
                 {a.mapsLink && (
-                  <a className="link-chip" href={a.mapsLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}>📍 Dirección</a>
+                  <a className="link-chip" href={a.mapsLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="location" size={14} /> Dirección</a>
                 )}
               </div>
             )}
