@@ -166,8 +166,8 @@ function transformPersonal(apiPersonal) {
 }
 
 function Login({ personalList, onLogin }) {
-  const [nombre, setNombre] = useStateL(personalList.length ? personalList[0].nombre : '');
-  const [query, setQuery]   = useStateL(personalList.length ? personalList[0].nombre : '');
+  const [nombre, setNombre] = useStateL('');
+  const [query, setQuery]   = useStateL('');
   const [suggestOpen, setSuggestOpen] = useStateL(false);
   const [pin, setPin]       = useStateL('');
   const [error, setError]   = useStateL(false);
