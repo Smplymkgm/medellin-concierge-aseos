@@ -33,6 +33,20 @@ function fechaToStr(val) {
   return s;
 }
 
+// Formatea un valor de hora (col Entrada/Salida) a "HH:mm". Sheets
+// convierte texto tipo "10:00" a una celda de hora (Date con fecha base
+// 30/12/1899); si leemos con .getValues() eso llega como objeto Date y
+// String(val) produce el toString() completo en vez de la hora.
+function horaToStr(val) {
+  if (!val) return "";
+  if (Object.prototype.toString.call(val) === "[object Date]") {
+    var d = new Date(val);
+    if (isNaN(d.getTime())) return "";
+    return Utilities.formatDate(d, "America/Bogota", "HH:mm");
+  }
+  return String(val).trim();
+}
+
 function fechaADate(val) {
   if (!val) return null;
   if (Object.prototype.toString.call(val) === "[object Date]") {
@@ -2049,8 +2063,8 @@ function getAllAseos() {
       // no un pendiente viejo del iCal — debe ganarle al "Pendiente" plano
       // que trae el master para la misma identidad (ver _scoreAseo).
       if (estado !== "Completado" && estado !== "Iniciado" && !esManual) continue;
-      var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
-      var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
+      var entrada = maxCol >= 14 ? horaToStr(r[13]) : "";
+      var salida  = maxCol >= 15 ? horaToStr(r[14]) : "";
       upsert({
         codigo:    cod,
         idProp:    String(r[1]).trim(),

@@ -89,11 +89,6 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
                   : <span className="ter">Sin asignar</span>}
               </span>
             )}
-            {role === 'aseadora' && a.precio > 0 && (
-              <span className="assignee" style={{ fontWeight: 600 }}>
-                <Icon name="money" size={14} /> {fmtCOP(a.precio)}
-              </span>
-            )}
           </div>
         </div>
         <Icon name="chevron-down" size={20} className="aseo-chevron" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
@@ -105,17 +100,14 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
               <Icon name="location" size={16} />
               <div className="keypair">
                 <span className="detail-label">Dirección</span>
-                <span className="detail-value">{a.direccion}</span>
+                {a.mapsLink
+                  ? <a className="detail-value detail-link" href={a.mapsLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}>{a.direccion}</a>
+                  : <span className="detail-value">{a.direccion}</span>}
               </div>
             </div>
-            {(a.mapsLink || a.airbnbLink) && (
+            {a.airbnbLink && (
               <div className="link-row">
-                {a.airbnbLink && (
-                  <a className="link-chip" href={a.airbnbLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="home" size={14} /> Ver propiedad</a>
-                )}
-                {a.mapsLink && (
-                  <a className="link-chip" href={a.mapsLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="location" size={14} /> Dirección</a>
-                )}
+                <a className="link-chip" href={a.airbnbLink} target="_blank" rel="noopener" onClick={e => e.stopPropagation()}><Icon name="home" size={14} /> Ver propiedad</a>
               </div>
             )}
             {(() => {
