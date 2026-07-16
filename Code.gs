@@ -541,8 +541,11 @@ function handleCompletarAseo(body) {
 // ASEADORA — iniciarAseo (marca "Iniciado", antes de completar)
 // ============================================================
 // Mismo patrón que handleCompletarAseo: busca/crea la fila en "Todos los
-// Aseos", pone estado "Iniciado" en col 8 y sincroniza col 7 (estado) del
-// master. No toca el form (cols 14+) ni el precio/aseadora.
+// Aseos" y pone estado "Iniciado" en col 8. NO sincroniza el master — la
+// hoja "Todas las Reservas" (col G) tiene su propia validación de datos
+// que solo acepta Confirmada/Cancelada/Pendiente/Finalizado, así que
+// "Iniciado" es un sub-estado transitorio que vive solo en "Todos los
+// Aseos" (el master se actualiza recién al completar, como siempre).
 
 function handleIniciarAseo(body) {
   var codigo = String(body.codigo || "").trim();
@@ -605,19 +608,6 @@ function handleIniciarAseo(body) {
     }
 
     hoja.getRange(fila, 8).setValue("Iniciado");
-
-    // Sincronizar estado en el master (col 7 = estado, igual que handleCompletarAseo)
-    if (master && master.getLastRow() >= 2) {
-      if (masterRow === -1) {
-        var mc = master.getRange(2, 1, master.getLastRow()-1, 1).getValues();
-        for (var j = 0; j < mc.length; j++) {
-          if (String(mc[j][0]) === codigo) { masterRow = j + 2; break; }
-        }
-      }
-      if (masterRow !== -1) {
-        master.getRange(masterRow, 7).setValue("Iniciado");
-      }
-    }
 
     return respond(true, null);
   } finally {
