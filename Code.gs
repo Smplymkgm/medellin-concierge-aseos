@@ -98,6 +98,7 @@ function doPost(e) {
     if (action === "agregarAseo")         return handleAgregarAseo(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
+    if (action === "fixEstadoValidation") return respond(true, fixEstadoValidation());
 
     // Endpoints debug/inspect/run* eliminados en la auditoría de
     // producción. Las funciones administrativas se ejecutan vía el menú
@@ -2659,6 +2660,29 @@ function convertirVideosAHyperlink() {
 // ============================================================
 // Devuelve el contenido de la hoja "Videos Aseos" + el folderId de la
 // carpeta raíz de Drive donde se suben los videos.
+
+// ============================================================
+// FIX — validación de datos de la columna Estado (col H) en
+// "Todos los Aseos". La regla original solo permitía Pendiente/
+// Completado/Cancelado; agrega "Iniciado" (usado por handleIniciarAseo)
+// sin tocar el resto de la regla. One-shot, seguro de re-correr.
+// ============================================================
+
+function fixEstadoValidation() {
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return { ok: false, error: "Hoja no encontrada" };
+
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(["Pendiente", "Iniciado", "Completado", "Cancelado"], true)
+    .setAllowInvalid(false)
+    .build();
+
+  var range = hoja.getRange(2, 8, hoja.getMaxRows() - 1, 1); // col H, todas las filas
+  range.setDataValidation(rule);
+
+  return { ok: true, rango: range.getA1Notation() };
+}
 
 // ============================================================
 // SELF-TEST — diagnóstico end-to-end. Correr desde menú o vía
