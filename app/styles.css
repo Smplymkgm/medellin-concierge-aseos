@@ -230,6 +230,7 @@ html, body {
 .detail-row .ico { color: var(--text-tertiary); margin-top: 1px; }
 .detail-label { font-size: 12px; color: var(--text-tertiary); }
 .detail-value { font-size: 14px; color: var(--text-primary); }
+.detail-value.detail-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .keypair { display: flex; flex-direction: column; gap: 1px; }
 
 .aseo-actions { display: flex; gap: var(--sp-base); margin-top: 2px; }
