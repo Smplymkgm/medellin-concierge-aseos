@@ -99,6 +99,7 @@ function doPost(e) {
     if (action === "getHistorial")        return handleGetHistorial(body);
     if (action === "runSelfTest")         return respond(true, runSelfTest());
     if (action === "fixEstadoValidation") return respond(true, fixEstadoValidation());
+    if (action === "limpiarFilaDiagnostico") return respond(true, limpiarFilaDiagnostico());
 
     // Endpoints debug/inspect/run* eliminados en la auditoría de
     // producción. Las funciones administrativas se ejecutan vía el menú
@@ -2682,6 +2683,41 @@ function fixEstadoValidation() {
   range.setDataValidation(rule);
 
   return { ok: true, rango: range.getA1Notation() };
+}
+
+// ============================================================
+// LIMPIEZA — borra las filas de la propiedad de prueba
+// "__TEST_DIAGNOSTIC__" usada para diagnosticar el bug de validación de
+// Estado. One-shot, seguro de re-correr (no hace nada si ya no existen).
+// ============================================================
+
+function limpiarFilaDiagnostico() {
+  var ss = getSS();
+  var borradas = { aseos: 0, master: 0 };
+
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (hoja && hoja.getLastRow() >= 2) {
+    var datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
+    for (var i = datos.length - 1; i >= 0; i--) {
+      if (String(datos[i][2]).trim() === "__TEST_DIAGNOSTIC__") {
+        hoja.deleteRow(i + 2);
+        borradas.aseos++;
+      }
+    }
+  }
+
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  if (master && master.getLastRow() >= 2) {
+    var mDatos = master.getRange(2, 1, master.getLastRow() - 1, 3).getValues();
+    for (var j = mDatos.length - 1; j >= 0; j--) {
+      if (String(mDatos[j][2]).trim() === "__TEST_DIAGNOSTIC__") {
+        master.deleteRow(j + 2);
+        borradas.master++;
+      }
+    }
+  }
+
+  return borradas;
 }
 
 // ============================================================
