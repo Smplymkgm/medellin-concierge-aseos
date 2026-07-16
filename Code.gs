@@ -2045,7 +2045,10 @@ function getAllAseos() {
       // le puso un código de reserva real para ubicarlo). Ambos se muestran y
       // se protegen del borrado del sync.
       var esManual = cod.indexOf("MAN") === 0 || String(r[11] || "").trim() === "MANUAL";
-      if (estado !== "Completado" && !esManual) continue;
+      // "Iniciado" también se conserva: es progreso real de la aseadora,
+      // no un pendiente viejo del iCal — debe ganarle al "Pendiente" plano
+      // que trae el master para la misma identidad (ver _scoreAseo).
+      if (estado !== "Completado" && estado !== "Iniciado" && !esManual) continue;
       var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
       var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
       upsert({
@@ -2115,6 +2118,7 @@ function getAllAseos() {
 function _scoreAseo(a) {
   var s = 0;
   if (a.estado === "Completado") s += 100;
+  if (a.estado === "Iniciado")   s += 50;
   if (a.formFilled)              s += 10;
   // Preferir reservas manuales (Booking/otras plataformas) sobre fantasmas iCal
   if (String(a.codigo || "").indexOf("MAN") === 0) s += 5;
