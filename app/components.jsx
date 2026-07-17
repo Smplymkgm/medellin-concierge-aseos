@@ -51,7 +51,7 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
   const a = aseoEnriched(aseo);
   const [iniciando, setIniciando] = useState(false);
   const cls = ['aseo-card', 's-' + a.status, a.priority ? 'priority' : '', open ? 'open' : ''].join(' ');
-  const huespedesHoy = role === 'aseadora' && a.status !== 'done' && a.checkin && sameDay(a.checkin, TODAY);
+  const huespedesHoy = a.status !== 'done' && a.checkin && sameDay(a.checkin, TODAY);
 
   function handleIniciar(e) {
     e.stopPropagation();
