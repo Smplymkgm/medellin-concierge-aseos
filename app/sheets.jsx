@@ -18,6 +18,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
   const [file, setFile] = useStateS(null);
   const [progress, setProgress] = useStateS(0);
   const [uploading, setUploading] = useStateS(false);
+  const [uploadFailed, setUploadFailed] = useStateS(false);
   const fileRef = useRefS(null);
   const timer = useRefS(null);
   const bodyRef = useRefS(null);
@@ -26,7 +27,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
     if (open) {
       setStep(0); setEntrada(''); setSalida(''); setNotas('');
       setRevision({}); setReposicion({}); setFuncionamiento({}); setReporte('');
-      setFile(null); setProgress(0); setUploading(false);
+      setFile(null); setProgress(0); setUploading(false); setUploadFailed(false);
     }
     return () => clearInterval(timer.current);
   }, [open]);
@@ -37,6 +38,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
     setFile({ name: f.name, size: f.size });
     setUploading(true);
     setProgress(0);
+    setUploadFailed(false);
 
     // 1. Pedir resumable URL al backend
     gasPost({
@@ -56,8 +58,16 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', uploadUrl);
       xhr.setRequestHeader('Content-Type', f.type || 'video/mp4');
+      // Progreso en variable local del closure: el state `progress` capturado
+      // aquí queda congelado en 0 (stale closure), así que onerror NUNCA
+      // podía distinguir "falló al inicio" de "terminó pero Safari/CORS
+      // bloqueó la respuesta".
+      let lastProgress = 0;
       xhr.upload.onprogress = ev => {
-        if (ev.lengthComputable) setProgress(Math.round(ev.loaded / ev.total * 100));
+        if (ev.lengthComputable) {
+          lastProgress = Math.round(ev.loaded / ev.total * 100);
+          setProgress(lastProgress);
+        }
       };
       let uploadFinished = false;
 
@@ -105,6 +115,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
         } else {
           uploadFinished = true;
           setUploading(false);
+          setUploadFailed(true);
           alert('Error subiendo (' + xhr.status + '): ' + (xhr.responseText || '').slice(0, 200));
         }
       };
@@ -114,12 +125,13 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
         // del response (Safari + CORS), el archivo ya está en Drive.
         // No molestamos al usuario; le mostramos un aviso suave.
         if (uploadFinished) return;
-        if (progress >= 99) {
+        if (lastProgress >= 99) {
           finalizeSuccess('');
           showAlertSoft('Video subido a Drive. No se pudo confirmar el link automáticamente.');
         } else {
           uploadFinished = true;
           setUploading(false);
+          setUploadFailed(true);
           alert('Error de red durante el upload');
         }
       };
@@ -132,6 +144,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
       xhr.send(f);
     }).catch(err => {
       setUploading(false);
+      setUploadFailed(true);
       alert('Error: ' + (err && err.message || err));
     });
   }
@@ -167,6 +180,15 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
     const repoBool = {}; CHECK_REPOSICION.forEach(q => repoBool[q.id] = reposicion[q.id] === 'si');
     onDone(aseo, { entrada, salida, notas, revision, reposicion: repoBool, funcionamiento, reporte, file });
   }
+  // Camino de escape tras un fallo definitivo de upload: el video sigue
+  // siendo requisito en el camino feliz, pero un error de red no debe
+  // bloquear a la aseadora — el form se guarda igual y el video se puede
+  // subir/registrar después.
+  function finishSinVideo() {
+    if (!confirm('¿Enviar el formulario SIN video?\n\nEl aseo quedará completado y el formulario se guardará igual. El video se podrá subir o registrar después.')) return;
+    const repoBool = {}; CHECK_REPOSICION.forEach(q => repoBool[q.id] = reposicion[q.id] === 'si');
+    onDone(aseo, { entrada, salida, notas, revision, reposicion: repoBool, funcionamiento, reporte, file: null });
+  }
 
   const footer = (
     <div className="row gap-base">
@@ -178,7 +200,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
   );
 
   return (
-    <Sheet open={open} onClose={onClose} title="Completar aseo" footer={footer} height="90%">
+    <Sheet open={open} onClose={onClose} title="Completar aseo" footer={a ? footer : null} height="90%">
       {a && (
         <div ref={bodyRef}>
           {/* persistent property header */}
@@ -286,7 +308,7 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
                     <div className="file-thumb"><Icon name="video" size={20} /></div>
                     <div className="file-info">
                       <div className="file-name">{file.name}</div>
-                      <div className="caption">{fmtSize(file.size)}{uploading ? (' · subiendo ' + progress + '%') : ' · subido a Drive'}</div>
+                      <div className="caption">{fmtSize(file.size)}{uploading ? (' · subiendo ' + progress + '%') : (uploadFailed ? ' · falló la subida' : ' · subido a Drive')}</div>
                     </div>
                     {!uploading && progress >= 100 && <Icon name="check" size={20} style={{ color: 'var(--state-done)' }} />}
                   </div>
@@ -295,6 +317,15 @@ function CompletarSheet({ open, aseo, onClose, onDone }) {
                     <div className="row gap-base" style={{ flexWrap: 'wrap' }}>
                       <button className="linkbtn" onClick={() => fileRef.current && fileRef.current.click()}>Reemplazar archivo</button>
                       {file.link && <a className="linkbtn" href={file.link} target="_blank" rel="noopener">Ver en Drive</a>}
+                    </div>
+                  )}
+                  {!uploading && uploadFailed && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div className="wiz-blurb">No se pudo subir el video. Revisa tu conexión y reintenta, o envía el formulario sin video.</div>
+                      <div className="row gap-base" style={{ flexWrap: 'wrap' }}>
+                        <button className="linkbtn" onClick={() => fileRef.current && fileRef.current.click()}>Reintentar subida</button>
+                        <button className="linkbtn" onClick={finishSinVideo}>Enviar sin video</button>
+                      </div>
                     </div>
                   )}
                 </div>

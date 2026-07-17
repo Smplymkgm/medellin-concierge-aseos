@@ -401,7 +401,15 @@ function App() {
   function goToAseo(a) { setTab(session.rol === 'admin' ? 'aseos' : 'hoy'); setOpenId(a.codigo); }
 
   // actions
-  function openCompletar(a) { setCompletar(a); setCompletarOpen(true); }
+  // Nunca abrir el sheet sin aseo: un `a` undefined dejaba el sheet
+  // renderizado en blanco (body vacío) pero con el footer activo.
+  function openCompletar(a) { if (!a) return; setCompletar(a); setCompletarOpen(true); }
+
+  // Red de seguridad: si por cualquier vía el sheet quedó abierto sin aseo
+  // (desincronización de estado tras un refresh/error), cerrarlo.
+  useEffectL(function() {
+    if (completarOpen && !completar) setCompletarOpen(false);
+  }, [completarOpen, completar]);
   function doneCompletar(a, payload) {
     // El completador es la aseadora ASIGNADA (así pasa la validación del backend
     // y se le cuenta el pago), no quien tiene la sesión abierta. Si el admin
