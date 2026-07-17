@@ -42,6 +42,7 @@ CI hace el resto:
 - **Sin duplicados**: dedup por código (único en Airbnb) y por estadía (propiedad + checkout).
 - **Limpieza garantizada**: `limpiarDatos` quita el filtro y usa `clearContent` sobre toda la cuadrícula (no falla con filtros/rangos protegidos).
 - **Protección de pago**: toda fila en "Todos los Aseos" con fecha de completado (col M) nunca se borra, aunque cambie su Estado.
+- **Estado "Iniciado" protegido**: las filas `Iniciado` (aseadora ya llegó a la propiedad) también se conservan en la limpieza del sync; el estado vive solo en "Todos los Aseos" (la validación del master no lo acepta) y gana el identity-merge sobre un pendiente plano.
 
 Menú → Setup (avanzado) → **Recuperar reservas mal canceladas** restaura cancelados falsos a mano si hace falta.
 
@@ -70,8 +71,8 @@ Arquitectura, decisiones, roadmaps y handoff en [`docs/`](docs/) — empieza por
 
 ## Cuentas + credenciales
 
-- Owner: `michaelmgm1249@gmail.com`
+- Owner: `michaelmgm1249@gmail.com` · Owner del Apps Script: `development@medellinconcierge.net`
 - Admin app: usuario `Admin`, PIN `2025`
 - Aseadoras: Ana (1234), Fernanda (5678), Claudia (9012)
-- Secrets en GitHub Actions: `CLASPRC_JSON`, `CLASP_JSON`, `APPSCRIPT_DEPLOYMENT_ID`, `GAS_URL`
+- Secrets en GitHub Actions: `CLASPRC_JSON` (caduca — renovado 15 jul 2026, ver [HANDOFF.md](docs/HANDOFF.md)), `CLASP_JSON`, `APPSCRIPT_DEPLOYMENT_ID`, `GAS_URL`
 - Secrets en Apps Script: `HUBSPOT_API_KEY` (opcional)

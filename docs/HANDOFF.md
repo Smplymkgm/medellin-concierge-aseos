@@ -41,12 +41,13 @@ Web app para gestionar aseos de propiedades Airbnb en Medellín. Mobile-first. D
 
 ## Flujos críticos
 
-### 1. Aseadora completa un aseo
+### 1. Aseadora inicia y completa un aseo
 
-1. Tab "Aseos" → tap un aseo de hoy → "Completar"
-2. Wizard de 4 pasos: revisión (6 áreas), reposición (5 ítems), funcionamiento (9 ítems), notas + video
-3. Tap "Finalizar" → optimistic UI + `gasPost({action:'completarAseo', codigo, nombre, entrada, salida, revision, reposicion, funcionamiento, reporte, videoLink, notas})`
-4. Backend escribe a cols 8 (estado), 13 (timestamp), 14-20 (form fields) en hoja `Todos los Aseos`. Sync a master sheet.
+1. Tab "Aseos" → tap un aseo de hoy → **"Iniciar"** (al llegar a la propiedad) → estado `Iniciado` (badge azul, visible también para el admin). "Iniciado" vive SOLO en `Todos los Aseos` (la validación de datos del master lo rechaza) y sobrevive al sync.
+2. → "Completar" → wizard de 4 pasos: datos del servicio (entrada/salida), revisión, funcionamiento, fotos y videos
+3. El video es requisito en el camino feliz; si la subida falla definitivamente aparecen "Reintentar subida" / "Enviar sin video" (con confirmación) para no bloquear a la aseadora
+4. Tap "Enviar y completar" → optimistic UI + `gasPost({action:'completarAseo', ...})` → backend escribe cols 8/13/14-20 en `Todos los Aseos` y marca `Finalizado` en el master
+5. En la card, la dirección es hyperlink a Google Maps (col J `mapsLink` de Propiedades) y hay chip "Ver propiedad" a Airbnb (col K `airbnbLink`) — el admin los llena al editar la propiedad
 
 ### 2. Admin reasigna un aseo
 
@@ -70,15 +71,22 @@ Web app para gestionar aseos de propiedades Airbnb en Medellín. Mobile-first. D
 
 ## Cómo deployar cambios
 
-### Frontend (`app/*.jsx`, `Index.html`)
+**Frontend y backend: PR a `main` y mergear.** CI hace todo:
 
-Hoy: copy-paste manual al branch `gh-pages` o `git push origin main:gh-pages`.
-Pendiente (Sprint 0): GitHub Action que hace bundle + push a gh-pages automáticamente.
+- `app/**` / `Index.html` → `deploy-pages.yml` publica en `gh-pages` (cache-buster = SHA del commit)
+- `Code.gs` / `Sync.gs` / `appsscript.json` → `deploy-appsscript.yml`: `clasp push --force` + `clasp deploy --deploymentId <pinned>` (la URL del API no cambia) + health check `runSelfTest`
 
-### Backend (`Code.gs`, `Sync.gs`)
+### Si `CLASPRC_JSON` caduca (síntoma: deploy falla con `invalid_grant`)
 
-Hoy: copy-paste en el editor Apps Script → Deploy → Manage deployments → Edit → New version → Deploy.
-Pendiente (Sprint 0): `clasp push` automatizado via GitHub Action.
+Pasó el 30 jun–15 jul 2026 (dos semanas de deploys de backend fallando en silencio). Renovar:
+
+```bash
+clasp logout && clasp login   # autorizar con development@medellinconcierge.net (owner del script)
+cat ~/.clasprc.json | gh secret set CLASPRC_JSON --repo Smplymkgm/medellin-concierge-aseos
+gh run rerun <RUN_ID>
+```
+
+Última renovación: 15 jul 2026.
 
 ### URL del API
 
@@ -108,8 +116,16 @@ Si cambia (nueva versión deployed con URL diferente), actualizar `GAS_URL` en `
 
 ### Problema en login
 
-1. Aseadora no entra → `gasPost({action:'debug'})` desde Chrome console muestra qué hojas existen y row count
-2. Si Personal sheet tiene 0 rows, correr menú "Agregar Admin a Personal" o función `llenarTodo` desde editor
+1. Aseadora no entra → `gasPost({action:'runSelfTest'})` desde Chrome console (el endpoint `debug` fue eliminado) — muestra hojas, row counts y si `getPersonal` devuelve usuarios
+2. Si Personal sheet tiene 0 rows, correr menú "Agregar Admin a Personal" desde el editor
+
+### El backend responde "error de conexión" / HTML en vez de JSON
+
+Casi siempre es una **regla de validación de datos del spreadsheet** rechazando un write: la excepción NO pasa por el try/catch de `doPost` y Apps Script devuelve una página HTML de error, que rompe el `r.json()` del frontend. Columnas con validación: master col G (`Confirmada/Cancelada/Pendiente/Finalizado`), Aseos col H (`Pendiente/Iniciado/Completado/Cancelado`). Si se agrega un estado nuevo, ampliar la regla ANTES de escribir (patrón: acción one-shot como `fixEstadoValidation`).
+
+### Probar contra producción sin tocar datos reales
+
+Patrón usado en jul 2026: crear un aseo desechable con `{"action":"agregarAseo","propiedad":"__TEST_DIAGNOSTIC__",...}`, ejercitar la acción a probar, y limpiar con `{"action":"limpiarFilaDiagnostico"}` (borra todas las filas de esa propiedad de prueba en Aseos y master).
 
 ## Secretos / credenciales
 
@@ -124,7 +140,12 @@ OAuth scopes en `appsscript.json`:
 | Síntoma | Causa | Workaround |
 |---|---|---|
 | Frontend tarda 3-4s en TTI | Babel compila JSX en cliente cada pageload | Pendiente Sprint 1: Vite bundle |
-| Hay que pegar manualmente en Apps Script editor | No hay CI/CD | Pendiente Sprint 0: clasp + GitHub Actions |
+| ~~Copy-paste manual al editor Apps Script~~ | ~~No había CI/CD~~ | Resuelto — deploy automático desde `main` |
+| ~~Deploy backend fallaba con `invalid_grant`~~ | `CLASPRC_JSON` caducado | Resuelto 15 jul 2026 — ver "Cómo deployar" para renovarlo |
+| ~~"Iniciado" volvía a Pendiente solo~~ | El sync (cada 6h) borraba las filas Iniciado; y `getAllAseos` las descartaba en el merge | Resuelto jul 2026 (PRs #8, #10) |
+| ~~Botón Iniciar daba "error de conexión"~~ | Validación de datos en master col G rechazaba "Iniciado" (excepción → HTML, no JSON) | Resuelto jul 2026 (PR #7) — Iniciado ya no toca el master |
+| ~~Video subía pero reportaba "Error de red"~~ | Stale closure: `xhr.onerror` leía el state `progress` congelado en 0 | Resuelto jul 2026 (PR #10) |
+| ~~Horas entrada/salida como "Sat Dec 30 1899..."~~ | Sheets convierte "10:00" a celda-hora; se leía sin formatear | Resuelto — `horaToStr()` (PR #9) |
 | Sync de 120 aseos antes tardaba 30s | setValue celda por celda | Resuelto en Fase 7 — ahora ~5s con batch writes |
 | Refresh perdía sesión | localStorage no se usaba | Resuelto en Fase 4 |
 | Cancelaciones se perdían | Sync hacía DELETE+INSERT | Resuelto en Fase 7 — soft-cancel |
@@ -132,19 +153,27 @@ OAuth scopes en `appsscript.json`:
 | Form data se descartaba al completar | Frontend mandaba, backend ignoraba | Resuelto en Fase 6 — cols 14-20 |
 | Historial contaba por fecha de completar | Bug que sumaba aseos al mes anterior | Resuelto — ahora cuenta por checkout |
 
+## Reglas de la casa
+
+- **Sin emojis en la UI** — fallan entre plataformas. Solo el icon set SVG de `app/icons.jsx` (`<Icon name="..."/>`).
+- El login arranca con el campo Nombre **en blanco** (autosuggest al escribir); no precargar ningún nombre.
+- Cuidado con las reglas de validación de datos del spreadsheet al introducir valores nuevos (ver "Cómo debuggear").
+
 ## Próximos pasos sugeridos
 
 Ver `MIGRATION_ROADMAP.md`. En orden:
 
-1. Sprint 0 — clasp + GitHub Actions (deploy automatizado)
+1. ~~Sprint 0 — clasp + GitHub Actions~~ ✅ Completado
 2. Sprint 1 — Vite bundle (TTI < 1.5 s)
 3. Sprint 2 — Tests baseline
 4. Sprint 3+ — Migración a Postgres
 
+Pendiente puntual: probar el upload de video end-to-end desde un teléfono real (el fix del stale closure está desplegado pero no se ejercitó con un archivo real).
+
 ## Quién sabe qué
 
 - Mike (owner): contexto de negocio, prioridades, acceso a editor y spreadsheet
-- Claude Sonnet 4.6 (esta sesión): historia técnica del refactor de junio 2026, decisiones de diseño
+- Claude (sesiones jun–jul 2026): historia técnica del refactor de junio, features de julio (Iniciado, Ver como, maps/airbnb links, fixes de sync/validación/video) — ver los PRs #5–#10 del repo
 
 Para tomar el proyecto: leer este doc + `CURRENT_ARCHITECTURE.md` + `MIGRATION_ROADMAP.md` en ese orden. Después abrir `Code.gs` y `app/app.jsx` para mapear la realidad.
 

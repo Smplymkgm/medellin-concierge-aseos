@@ -1,4 +1,4 @@
-# Current Architecture — Medcon Cleanings (Junio 2026)
+# Current Architecture — Medcon Cleanings (Julio 2026)
 
 ## Stack
 
@@ -44,11 +44,18 @@
 
 | Hoja | Rol | Cols principales |
 |---|---|---|
-| `Todas las Reservas` | Maestra (snapshot del iCal + manuales `MANUAL-`) | Codigo, IDProp, Propiedad, Checkin, Checkout, Noches, Estado, Empleada, Precio, Notas, Acceso, CalId, NotasAdmin |
-| `Todos los Aseos` | Operativa (lo que ve la app) | + Aseadora, Estado (Pendiente/Completado/Cancelado), Completado timestamp, **cols 14-20: Entrada/Salida/Revision/Reposicion/Funcionamiento/Reporte/Video** |
-| `Propiedades` | Catálogo | ID, Nombre, Precio Aseo, Acceso, iCal URL, Empleada Auto, Folder Drive |
-| `Personal` | Usuarios | Activa, Nombre, PIN, Email, Formulario, Carpeta, Teléfono |
+| `Todas las Reservas` | Maestra (snapshot del iCal + manuales `MANUAL-`) | Codigo, IDProp, Propiedad, Checkin, Checkout, Noches, Estado, Empleada, Precio, Notas, Acceso, CalId, NotasAdmin. ⚠️ Col G (Estado) tiene validación de datos: solo `Confirmada/Cancelada/Pendiente/Finalizado` |
+| `Todos los Aseos` | Historial + progreso (completados, iniciados, manuales) | + Aseadora, Estado, Completado timestamp, **cols 14-20: Entrada/Salida/Revision/Reposicion/Funcionamiento/Reporte/Video**. ⚠️ Col H (Estado) tiene validación de datos: `Pendiente/Iniciado/Completado/Cancelado` (ampliada jul 2026 vía `fixEstadoValidation`) |
+| `Propiedades` | Catálogo | A ID, B Nombre, C Precio Aseo, D Acceso, E iCal URL(s) (varias separadas por salto de línea), F Empleada Auto, G Folder Drive, H AccesoEstructurado (JSON), I Activa, **J mapsLink, K airbnbLink** (jul 2026) |
+| `Personal` | Usuarios | Activa, Nombre, PIN, Email, Formulario, Carpeta, Teléfono, Cédula(H), Banco(I), TipoCuenta(J), NúmeroCuenta(K), NombreCompleto(L) |
 | `Videos Aseos` | Audit log | Codigo, Propiedad, Aseadora, Checkout, Link, Notas, Registrado |
+
+### Estado "Iniciado" (jul 2026)
+
+- La aseadora toca **"Iniciar"** al llegar → `iniciarAseo` escribe `Iniciado` en col H de `Todos los Aseos` (crea la fila desde el master si el pendiente solo vivía ahí).
+- "Iniciado" **NO se sincroniza al master** — la validación de col G del master lo rechaza; es un sub-estado operativo que vive solo en `Todos los Aseos`. El master pasa a `Finalizado` recién al completar, como siempre.
+- `getAllAseos()` conserva las filas Iniciado en el identity-merge (puntúan +50 en `_scoreAseo`, por encima del Pendiente plano del master). `sincronizarHojaAseos()` también las conserva en su limpieza.
+- ⚠️ Lección aprendida: las reglas de validación de datos del spreadsheet rechazan writes del backend con una excepción que NO pasa por el try/catch de `doPost` (Apps Script devuelve HTML de error en vez de JSON → el frontend lo ve como "error de conexión"). Antes de introducir un valor nuevo de estado, revisar/ampliar la regla de la columna.
 
 ## Endpoints `doPost` (JSON in/out)
 
@@ -58,18 +65,20 @@
 | `getDatos` | App login (post) | Bulk fetch: personal + propiedades + aseos del rol |
 | `getPersonal` | App login (pre) | Lista para dropdown de login |
 | `getAseos` | (aseadora, no usado actualmente) | Próximos + historial + total |
-| `getAllAseos` | Admin | Todos los aseos con filtros opcionales |
+| `getAllAseos` | Admin | Todos los aseos. Identity-merge (propiedad+checkout) entre `Todos los Aseos` y el master; conserva Completado/Iniciado/manuales, `_scoreAseo` decide el ganador |
 | `getHistorial` | Admin (futuro) | Filtrado server-side por mes/rango/aseadora/propiedad + payroll totals |
 | `completarAseo` / `completar` | Aseadora | Marca completado y guarda form (cols 14-20) |
+| `iniciarAseo` | Aseadora | Marca `Iniciado` (col H de Aseos, NO toca el master). Jul 2026 |
 | `asignarAseo` | Admin | Cambia aseadora asignada |
 | `moverAseo` | Admin | Mueve fecha de checkout |
-| `agregarAseo` | Admin | Crea aseo manual `MAN####` |
-| `getPropiedades` / `agregarPropiedad` / `actualizarPropiedad` | Admin | CRUD propiedades |
-| `actualizarPersonal` | Admin | Editar PIN/email/tel de aseadora |
-| `getUploadUrl` | Aseadora | Genera resumable upload URL para Drive |
-| `registrarVideo` | Aseadora | Log en hoja `Videos Aseos` |
-| `getFormRespuestas` | Admin | Lee respuestas del Google Form externo |
-| `debug` | Diagnóstico | Lista hojas + count + sample row |
+| `agregarAseo` | Admin | Crea aseo manual `MAN-…` |
+| `getPropiedades` / `agregarPropiedad` / `actualizarPropiedad` / `eliminarPropiedad` | Admin | CRUD propiedades (incluye `mapsLink`/`airbnbLink`, cols J/K) |
+| `actualizarPersonal` | Admin | Editar PIN/email/tel + datos de facturación. NO cambia el `nombre` (login key) |
+| `getUploadUrl` | Aseadora | Genera resumable upload URL para Drive (crea carpeta si falta) |
+| `registrarVideo` | Aseadora | Log en `Videos Aseos` + HYPERLINK en col 37 de Aseos; si no hay fileId busca por filename (rescate Safari/CORS) |
+| `runSelfTest` | Diagnóstico / CI health check | 10 checks end-to-end, no muta datos |
+| `fixEstadoValidation` | Mantenimiento (one-shot, ya corrido) | Amplía la validación de col H de Aseos para aceptar `Iniciado` |
+| `limpiarFilaDiagnostico` | Mantenimiento | Borra filas de la propiedad de prueba `__TEST_DIAGNOSTIC__` (usada para tests contra producción sin tocar datos reales) |
 
 ## Triggers programados (`crearTriggersAutomaticos`)
 
@@ -84,13 +93,24 @@
 - `LockService.waitLock(10s)` en `completarAseo` y `asignarAseo`
 - `LockService.waitLock(20s)` en `sincronizarCalendarios` y `sincronizarHojaAseos`
 
+## Lo que SÍ hay (julio 2026)
+
+- ✅ CI/CD completo — `deploy-pages.yml` (Pages, cache-buster = SHA) + `deploy-appsscript.yml` (`clasp push` + deploy pinned) + `ci.yml` (valida sintaxis). Merge a `main` = deploy.
+- ✅ Health check `runSelfTest` (10 checks) en cada deploy del backend
+- ✅ Estado "Iniciado" end-to-end (botón Iniciar → badge → sobrevive el sync)
+- ✅ Login con autosuggest de texto (campo en blanco por defecto, matching case-insensitive contra `getPersonal`)
+- ✅ "Ver como <aseadora>" para el admin — impersonación solo en memoria (`viewAs` en app.jsx), nunca toca la sesión de localStorage; banner fijo con Salir
+- ✅ Badge "Ingresan huéspedes" (check-in = día del aseo) para ambos roles
+- ✅ Dirección clickeable a Google Maps (`mapsLink`) + chip "Ver propiedad" a Airbnb (`airbnbLink`) en la card
+- ✅ Upload de video con rescate Safari/CORS (progreso en variable local, no state) + "Reintentar subida"/"Enviar sin video" tras fallo definitivo
+- ✅ Estados de carga: `ctx.dataLoaded` evita empty-states prematuros; `LoadingState` (spinner + label)
+- ✅ Sin emojis en la UI — solo el icon set SVG de `icons.jsx` (`<Icon name="..."/>`)
+
 ## Lo que NO está
 
 - ❌ Build pipeline — Babel se compila en cliente cada pageload
 - ❌ Tests automatizados
-- ❌ CI/CD (deploy manual via copy-paste al editor Apps Script)
 - ❌ Auth con tokens (PIN + nombre se mandan en cada request)
 - ❌ Cache server-side (`CacheService` no se usa todavía)
-- ❌ Versionado en GitHub del Apps Script (clasp no configurado)
 - ❌ Notificaciones push (WhatsApp, FCM)
 - ❌ Cancelación con refund por el admin desde la app
