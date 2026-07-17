@@ -500,6 +500,9 @@ function sincronizarHojaAseos() {
       // Conservar completados y aseos manuales (MAN- o marca "MANUAL") aunque
       // estén pendientes.
       if (est === "Completado") continue;
+      // "Iniciado" es progreso real de la aseadora (vive solo en esta hoja,
+      // no en el master) → conservarlo o el sync borraría el estado.
+      if (est === "Iniciado") continue;
       if (cod.indexOf("MAN") === 0) continue;
       if (marca === "MANUAL") continue;
       delRows.push(i + 2);

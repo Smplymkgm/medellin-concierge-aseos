@@ -2178,7 +2178,9 @@ function eliminarAseosDuplicados() {
 
   function score(r) {
     var s = 0;
-    if (String(r[7] || "").trim() === "Completado") s += 100;
+    var estFila = String(r[7] || "").trim();
+    if (estFila === "Completado") s += 100;
+    if (estFila === "Iniciado")   s += 50; // progreso real, gana a un pendiente plano
     var entrada = maxCol >= 14 ? String(r[13] || "").trim() : "";
     var salida  = maxCol >= 15 ? String(r[14] || "").trim() : "";
     if (entrada || salida) s += 10;
