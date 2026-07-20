@@ -108,12 +108,23 @@ function sincronizarCalendarios() {
     var cancelaciones = [];  // pendientes ausentes que PRESERVAMOS (no son cancelación aún)
     var removidas = 0;
 
+    // Precio del catálogo por id de propiedad — fallback para filas
+    // preservadas que ya perdieron su precio (bug histórico: preservar
+    // escribía precio=0 y noches=0 fijos).
+    var precioCatalogo = {};
+    for (var pc = 0; pc < propiedades.length; pc++) {
+      precioCatalogo[propiedades[pc].id] = Number(propiedades[pc].precioAseo) || 0;
+    }
+
     function preservar(cod, est) {
       var g = guardado[cod];
       cancelaciones.push({
         codigo: cod, idProp: g.idProp || "", propiedad: g.propiedad || "",
-        checkin: g.checkin || "", checkout: g.checkout || "", noches: 0,
-        estado: est, precio: 0, acceso: g.acceso || "", empleadaAuto: "",
+        checkin: g.checkin || "", checkout: g.checkout || "",
+        noches: g.noches || 0,
+        estado: est,
+        precio: g.precio || precioCatalogo[g.idProp] || 0,
+        acceso: g.acceso || "", empleadaAuto: "",
       });
     }
 
@@ -168,8 +179,8 @@ function sincronizarCalendarios() {
       var fiC = hoja.getLastRow() + 1;
       var filasC = cancelaciones.map(function(r) {
         var g = guardado[r.codigo] || {};
-        return [r.codigo, r.idProp || "", r.propiedad || "", r.checkin, r.checkout, 0,
-                r.estado, g.empleada || "", 0, g.notas || "", g.acceso || "",
+        return [r.codigo, r.idProp || "", r.propiedad || "", r.checkin, r.checkout, r.noches || 0,
+                r.estado, g.empleada || "", r.precio || 0, g.notas || "", g.acceso || "",
                 g.eventId || "", ""];
       });
       hoja.getRange(fiC, 1, filasC.length, 13).setValues(filasC);
@@ -372,6 +383,8 @@ function leerDatosGuardados(hoja) {
       propiedad: String(f[2] || ""),
       empleada: String(f[7] || ""),
       estado:   String(f[6] || ""),
+      noches:   Number(f[5]) || 0,
+      precio:   Number(f[8]) || 0,
       notas:    String(f[9] || ""),
       acceso:   String(f[10] || ""),
       eventId:  String(f[11] || ""),

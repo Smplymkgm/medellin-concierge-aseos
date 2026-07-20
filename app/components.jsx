@@ -51,7 +51,9 @@ function AseoCard({ aseo, open, onToggle, onComplete, onReassign, onFinalizarSin
   const a = aseoEnriched(aseo);
   const [iniciando, setIniciando] = useState(false);
   const cls = ['aseo-card', 's-' + a.status, a.priority ? 'priority' : '', open ? 'open' : ''].join(' ');
-  const huespedesHoy = a.status !== 'done' && a.checkin && sameDay(a.checkin, TODAY);
+  // Flag calculado en el backend: otra reserva de la misma propiedad hace
+  // check-in el día de este aseo (no el check-in de ESTA reserva).
+  const huespedesHoy = a.status !== 'done' && !!a.ingresanHuespedes;
 
   function handleIniciar(e) {
     e.stopPropagation();
