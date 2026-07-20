@@ -112,6 +112,7 @@ function transformAseos(apiAseos) {
       status:   status,
       estado:   a.estado || '',
       iniciado: a.estado === 'Iniciado',
+      ingresanHuespedes: !!a.ingresanHuespedes,
       asignada: a.asignada || null,
       priority: isToday && !isDone,
       notas:    a.notas || '',

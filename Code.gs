@@ -114,6 +114,7 @@ function doPost(e) {
     if (action === "runSelfTest")         return respond(true, runSelfTest());
     if (action === "fixEstadoValidation") return respond(true, fixEstadoValidation());
     if (action === "limpiarFilaDiagnostico") return respond(true, limpiarFilaDiagnostico());
+    if (action === "repararPreciosAseos")  return handleRepararPreciosAseos(body);
 
     // Endpoints debug/inspect/run* eliminados en la auditoría de
     // producción. Las funciones administrativas se ejecutan vía el menú
@@ -2125,6 +2126,24 @@ function getAllAseos() {
     if (porCod[c] === undefined) { porCod[c] = finales.length; finales.push(result[k]); }
     else if (_scoreAseo(result[k]) > _scoreAseo(finales[porCod[c]])) finales[porCod[c]] = result[k];
   }
+
+  // ingresanHuespedes: hay OTRA reserva de la misma propiedad cuyo check-in
+  // cae el día de este aseo (fechaAseo) → el aseo es contra reloj. Se calcula
+  // aquí (sobre TODAS las reservas) porque la aseadora solo recibe sus aseos
+  // y no vería la reserva entrante. Se ignoran filas con checkin==checkout
+  // (manuales, que usan la misma fecha como placeholder).
+  var checkinPorProp = {};
+  for (var h = 0; h < finales.length; h++) {
+    var fh = finales[h];
+    if (fh.idProp && fh.checkin && fh.checkin !== fh.checkout) {
+      checkinPorProp[fh.idProp + "|" + fh.checkin] = true;
+    }
+  }
+  for (var h2 = 0; h2 < finales.length; h2++) {
+    var f2 = finales[h2];
+    f2.ingresanHuespedes = !!(f2.idProp && checkinPorProp[f2.idProp + "|" + (f2.fechaAseo || f2.checkout)]);
+  }
+
   return finales;
 }
 
@@ -2728,6 +2747,65 @@ function limpiarFilaDiagnostico() {
   }
 
   return borradas;
+}
+
+// ============================================================
+// MANTENIMIENTO — repararPreciosAseos
+// Repara precios en "Todos los Aseos" para un mes dado (checkout en
+// ese mes) usando el precio ACTUAL del catálogo de Propiedades:
+//   • idProps listados → se les pone el precio de catálogo siempre
+//     (para propagar un cambio de precio a aseos ya realizados).
+//   • precio == 0 con catálogo > 0 → se restaura el precio de catálogo
+//     (víctimas del bug de preservar() que escribía precio=0).
+// No toca aseos manuales (MAN-) salvo que su idProp esté en la lista,
+// ni filas de "No asignado" (esas van sin pago a propósito).
+// dryRun: true → solo reporta, no escribe.
+// ============================================================
+
+function handleRepararPreciosAseos(body) {
+  var mes     = String(body.mes || "").trim();          // "MM/yyyy"
+  var idProps = (body.idProps || []).map(function(p){ return String(p).trim(); });
+  var dryRun  = body.dryRun === true;
+  if (!/^\d{2}\/\d{4}$/.test(mes)) return respond(false, null, "mes requerido (MM/yyyy)");
+
+  var ss   = getSS();
+  var hoja = ss.getSheetByName(CONFIG.hojaAseos);
+  if (!hoja || hoja.getLastRow() < 2) return respond(false, null, "Hoja no encontrada");
+
+  var catalogo = {};
+  getPropiedades().forEach(function(p){ catalogo[p.id] = Number(p.precioAseo) || 0; });
+  var setProps = {};
+  idProps.forEach(function(p){ setProps[p] = true; });
+
+  var datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 13).getValues();
+  var disp  = hoja.getRange(2, 4, hoja.getLastRow()-1, 2).getDisplayValues();
+  var cambios = [];
+
+  for (var i = 0; i < datos.length; i++) {
+    var r = datos[i];
+    var cod    = String(r[0] || "").trim();
+    if (!cod) continue;
+    var idProp = String(r[1] || "").trim();
+    var estado = String(r[7] || "").trim();
+    var asignada = String(r[6] || "").trim();
+    var precio = Number(r[8]) || 0;
+    var checkoutStr = disp[i][1] || fechaToStr(r[4]);
+    var p = checkoutStr.split("/");
+    if (p.length !== 3 || (p[1] + "/" + p[2]) !== mes) continue;
+    if (estado !== "Completado" && estado !== "Iniciado" && estado !== "Pendiente") continue;
+    if (asignada === "No asignado") continue;
+
+    var nuevo = catalogo[idProp] || 0;
+    var aplicar = false;
+    if (setProps[idProp]) aplicar = true;                                  // props pedidas: siempre
+    else if (precio === 0 && nuevo > 0 && cod.indexOf("MAN") !== 0) aplicar = true;  // restaurar $0 accidental
+
+    if (aplicar && nuevo !== precio) {
+      cambios.push({ codigo: cod, idProp: idProp, propiedad: String(r[2] || ""), checkout: checkoutStr, antes: precio, despues: nuevo });
+      if (!dryRun) hoja.getRange(i + 2, 9).setValue(nuevo);
+    }
+  }
+  return respond(true, { dryRun: dryRun, cambios: cambios });
 }
 
 // ============================================================
