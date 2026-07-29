@@ -115,6 +115,7 @@ function doPost(e) {
     if (action === "fixEstadoValidation") return respond(true, fixEstadoValidation());
     if (action === "limpiarFilaDiagnostico") return respond(true, limpiarFilaDiagnostico());
     if (action === "repararPreciosAseos")  return handleRepararPreciosAseos(body);
+    if (action === "repararIdsPropiedad")  return handleRepararIdsPropiedad(body);
 
     // Endpoints debug/inspect/run* eliminados en la auditoría de
     // producción. Las funciones administrativas se ejecutan vía el menú
@@ -1283,9 +1284,11 @@ function handleActualizarPropiedad(body) {
     var fila = i + 2;
 
     // Cambio de código (columna A): solo si viene un id nuevo, distinto y
-    // no choca con otra propiedad. No toca aseos ya sincronizados con el
-    // código viejo (Todas las Reservas / Todos los Aseos) — solo renombra
-    // la propiedad en su hoja.
+    // no choca con otra propiedad. Se hace cascade a las reservas/aseos ya
+    // sincronizados que referencian el idProp viejo (Todas las Reservas /
+    // Todos los Aseos, columna B) — si no, el aseo queda huérfano: no
+    // encuentra la propiedad (propById falla) y se ve como "Propiedad"
+    // genérica sin dirección ni precio.
     var idNuevo = String(datos.id || "").trim();
     if (idNuevo && idNuevo !== id) {
       var soloDigitosE = idNuevo.replace(/\D/g, "");
@@ -1295,8 +1298,10 @@ function handleActualizarPropiedad(body) {
           return respond(false, null, "Ese código ya existe");
         }
       }
+      var idViejo = id;
       hoja.getRange(fila, 1).setValue(idNuevo);
       id = idNuevo;
+      _renombrarIdPropEnReservas(idViejo, idNuevo);
     }
 
     if (datos.nombre               !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
@@ -1322,6 +1327,64 @@ function handleActualizarPropiedad(body) {
     return respond(true, { id: id });
   }
   return respond(false, null, "Propiedad no encontrada: " + id);
+}
+
+// Cascade de un cambio de código de propiedad hacia las hojas que guardan
+// idProp en su columna B: "Todas las Reservas" (pendientes) y "Todos los
+// Aseos" (historial). Sin esto, un rename deja aseos ya sincronizados sin
+// poder resolver su propiedad (propById falla en el frontend).
+function _renombrarIdPropEnReservas(idViejo, idNuevo) {
+  var ss = getSS();
+  [CONFIG.hojaMaestra, CONFIG.hojaAseos].forEach(function(nombreHoja) {
+    var hoja = ss.getSheetByName(nombreHoja);
+    if (!hoja || hoja.getLastRow() < 2) return;
+    var rango = hoja.getRange(2, 2, hoja.getLastRow() - 1, 1);
+    var vals = rango.getValues();
+    var cambio = false;
+    for (var i = 0; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === idViejo) { vals[i][0] = idNuevo; cambio = true; }
+    }
+    if (cambio) rango.setValues(vals);
+  });
+}
+
+// ============================================================
+// MANTENIMIENTO — repararIdsPropiedad
+// One-shot para reparar reservas/aseos que quedaron con un idProp huérfano
+// (rename de código de propiedad hecho ANTES de que actualizarPropiedad
+// tuviera cascade — ver _renombrarIdPropEnReservas). Empareja por el
+// nombre de propiedad guardado en la reserva (columna C, que el rename no
+// tocaba) contra el catálogo actual y corrige la columna B (idProp).
+// dryRun: true → solo reporta, no escribe.
+// ============================================================
+function handleRepararIdsPropiedad(body) {
+  var dryRun = body.dryRun === true;
+  var ss = getSS();
+  var catalogo = {};                 // nombre (lowercase) -> id actual
+  getPropiedades().forEach(function(p) { catalogo[String(p.nombre).trim().toLowerCase()] = p.id; });
+  var idsValidos = {};
+  getPropiedades().forEach(function(p) { idsValidos[p.id] = true; });
+
+  var cambios = [];
+  [CONFIG.hojaMaestra, CONFIG.hojaAseos].forEach(function(nombreHoja) {
+    var hoja = ss.getSheetByName(nombreHoja);
+    if (!hoja || hoja.getLastRow() < 2) return;
+    var rango = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3);  // A=codigo, B=idProp, C=propiedad
+    var vals = rango.getValues();
+    var cambio = false;
+    for (var i = 0; i < vals.length; i++) {
+      var idProp = String(vals[i][1] || "").trim();
+      if (!idProp || idsValidos[idProp]) continue;              // ya válido, nada que hacer
+      var nombre = String(vals[i][2] || "").trim().toLowerCase();
+      var idNuevo = catalogo[nombre];
+      if (!idNuevo) continue;                                   // no se pudo matchear, se deja
+      cambios.push({ hoja: nombreHoja, codigo: vals[i][0], idViejo: idProp, idNuevo: idNuevo });
+      if (!dryRun) { vals[i][1] = idNuevo; cambio = true; }
+    }
+    if (cambio) rango.setValues(vals);
+  });
+
+  return respond(true, { cambios: cambios, dryRun: dryRun });
 }
 
 // ============================================================
