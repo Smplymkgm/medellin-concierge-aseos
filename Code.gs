@@ -1387,6 +1387,21 @@ function handleRepararIdsPropiedad(body) {
   return respond(true, { cambios: cambios, dryRun: dryRun });
 }
 
+// Wrappers sin parámetros para correr desde el editor de Apps Script
+// (menú Ejecutar ▸ elegir función ▸ Ejecutar) sin pasar por el endpoint web.
+// Ver resultado en Ver ▸ Registros (Ctrl+Enter / Cmd+Enter).
+function repararIdsPropiedad_verCambios() {
+  var r = handleRepararIdsPropiedad({ dryRun: true });
+  Logger.log(JSON.stringify(r.data.cambios, null, 2));
+  Logger.log(r.data.cambios.length + " cambio(s) pendiente(s). Nada se escribió (dryRun).");
+}
+
+function repararIdsPropiedad_aplicar() {
+  var r = handleRepararIdsPropiedad({ dryRun: false });
+  Logger.log(JSON.stringify(r.data.cambios, null, 2));
+  Logger.log(r.data.cambios.length + " cambio(s) aplicado(s).");
+}
+
 // ============================================================
 // PERSONAL
 // ============================================================
