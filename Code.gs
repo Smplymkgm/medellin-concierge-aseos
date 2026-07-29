@@ -1358,7 +1358,14 @@ function _renombrarIdPropEnReservas(idViejo, idNuevo) {
 // dryRun: true → solo reporta, no escribe.
 // ============================================================
 function handleRepararIdsPropiedad(body) {
-  var dryRun = body.dryRun === true;
+  var resultado = _repararIdsPropiedadCore(body.dryRun === true);
+  return respond(true, resultado);
+}
+
+// Lógica pura (sin ContentService) para poder llamarla tanto desde el
+// endpoint web (handleRepararIdsPropiedad) como desde los wrappers del
+// editor, que necesitan un objeto plano y no un TextOutput.
+function _repararIdsPropiedadCore(dryRun) {
   var ss = getSS();
   var catalogo = {};                 // nombre (lowercase) -> id actual
   getPropiedades().forEach(function(p) { catalogo[String(p.nombre).trim().toLowerCase()] = p.id; });
@@ -1384,22 +1391,22 @@ function handleRepararIdsPropiedad(body) {
     if (cambio) rango.setValues(vals);
   });
 
-  return respond(true, { cambios: cambios, dryRun: dryRun });
+  return { cambios: cambios, dryRun: dryRun };
 }
 
 // Wrappers sin parámetros para correr desde el editor de Apps Script
 // (menú Ejecutar ▸ elegir función ▸ Ejecutar) sin pasar por el endpoint web.
 // Ver resultado en Ver ▸ Registros (Ctrl+Enter / Cmd+Enter).
 function repararIdsPropiedad_verCambios() {
-  var r = handleRepararIdsPropiedad({ dryRun: true });
-  Logger.log(JSON.stringify(r.data.cambios, null, 2));
-  Logger.log(r.data.cambios.length + " cambio(s) pendiente(s). Nada se escribió (dryRun).");
+  var r = _repararIdsPropiedadCore(true);
+  Logger.log(JSON.stringify(r.cambios, null, 2));
+  Logger.log(r.cambios.length + " cambio(s) pendiente(s). Nada se escribió (dryRun).");
 }
 
 function repararIdsPropiedad_aplicar() {
-  var r = handleRepararIdsPropiedad({ dryRun: false });
-  Logger.log(JSON.stringify(r.data.cambios, null, 2));
-  Logger.log(r.data.cambios.length + " cambio(s) aplicado(s).");
+  var r = _repararIdsPropiedadCore(false);
+  Logger.log(JSON.stringify(r.cambios, null, 2));
+  Logger.log(r.cambios.length + " cambio(s) aplicado(s).");
 }
 
 // ============================================================
