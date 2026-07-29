@@ -825,6 +825,11 @@ function handleAsignarAseo(body) {
 
     if (!aseoInfo) return respond(false, null, "Aseo no encontrado");
 
+    // Registra si esta desasignación fue a propósito (aseadora vacía), para
+    // que la próxima sync (Sync.gs escribirReservas) no reponga la
+    // empleadaAuto de la propiedad encima del vacío deliberado.
+    try { marcarDesasignadoManual(codigo, !aseadora); } catch(e) { Logger.log("marcarDesasignadoManual: " + e.message); }
+
     // Solo notificar si la aseadora realmente cambió (evita emails duplicados
     // cuando el admin guarda el mismo valor o el frontend reintenta la llamada)
     var aseadoraCambio = aseadora && aseadora !== aseadoraAnterior;
@@ -1179,9 +1184,20 @@ function handleAgregarPropiedad(body) {
   if (hoja.getLastRow() > 1) {
     existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues().flat().map(String);
   }
-  var nums = existentes.map(function(id){ return parseInt(id.replace("#","")) || 0; });
-  var maxNum = nums.length ? Math.max.apply(null, nums) : 0;
-  var nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
+
+  // Código manual: si el admin escribió uno, se usa tal cual (normalizado a
+  // "#0000"). Si está vacío, se sigue autogenerando como antes.
+  var idManual = String(datos.id || "").trim();
+  var nuevoId;
+  if (idManual) {
+    var soloDigitos = idManual.replace(/\D/g, "");
+    nuevoId = soloDigitos ? "#" + soloDigitos.padStart(4, "0") : idManual;
+    if (existentes.indexOf(nuevoId) !== -1) return respond(false, null, "Ese código ya existe");
+  } else {
+    var nums = existentes.map(function(id){ return parseInt(id.replace("#","")) || 0; });
+    var maxNum = nums.length ? Math.max.apply(null, nums) : 0;
+    nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
+  }
 
   var folderId = "";
   try { folderId = crearCarpetaPropiedad(nuevoId + " " + nombre); } catch(e) { Logger.log("Drive: " + e.message); }
@@ -1265,6 +1281,24 @@ function handleActualizarPropiedad(body) {
   for (var i = 0; i < existentes.length; i++) {
     if (String(existentes[i][0]).trim() !== id) continue;
     var fila = i + 2;
+
+    // Cambio de código (columna A): solo si viene un id nuevo, distinto y
+    // no choca con otra propiedad. No toca aseos ya sincronizados con el
+    // código viejo (Todas las Reservas / Todos los Aseos) — solo renombra
+    // la propiedad en su hoja.
+    var idNuevo = String(datos.id || "").trim();
+    if (idNuevo && idNuevo !== id) {
+      var soloDigitosE = idNuevo.replace(/\D/g, "");
+      idNuevo = soloDigitosE ? "#" + soloDigitosE.padStart(4, "0") : idNuevo;
+      for (var e = 0; e < existentes.length; e++) {
+        if (e !== i && String(existentes[e][0]).trim() === idNuevo) {
+          return respond(false, null, "Ese código ya existe");
+        }
+      }
+      hoja.getRange(fila, 1).setValue(idNuevo);
+      id = idNuevo;
+    }
+
     if (datos.nombre               !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
     if (datos.precioAseo           !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
     if (datos.acceso               !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
@@ -1285,7 +1319,7 @@ function handleActualizarPropiedad(body) {
     // Col J/K (10/11) = mapsLink/airbnbLink — nuevas, después de I "Activa".
     if (datos.mapsLink   !== undefined) hoja.getRange(fila, 10).setValue(datos.mapsLink);
     if (datos.airbnbLink !== undefined) hoja.getRange(fila, 11).setValue(datos.airbnbLink);
-    return respond(true, null);
+    return respond(true, { id: id });
   }
   return respond(false, null, "Propiedad no encontrada: " + id);
 }
