@@ -658,6 +658,10 @@ function App() {
         // backend en vez de parchear el id localmente, para no desincronizar
         // referencias (aseos, etc.) con el id viejo que quedó en memoria.
         if (res.data && res.data.id && res.data.id !== oldId) {
+          // El detalle de propiedad abierto quedaba con el propId viejo tras
+          // el reload (ya no matchea ningún prop → pantalla en blanco hasta
+          // tocar afuera). Lo seguimos al nuevo id.
+          setPropId(current => current === oldId ? res.data.id : current);
           loadDataFor(session.nombre, session.rol);
         }
       } else {
