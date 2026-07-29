@@ -594,6 +594,7 @@ function App() {
       gasPost({
         action: 'agregarPropiedad',
         datos: {
+          id: datos.id,
           nombre: datos.nombre,
           precioAseo: datos.precio,
           acceso: datos.acceso,

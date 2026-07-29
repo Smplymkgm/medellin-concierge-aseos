@@ -1184,9 +1184,20 @@ function handleAgregarPropiedad(body) {
   if (hoja.getLastRow() > 1) {
     existentes = hoja.getRange(2, 1, hoja.getLastRow()-1, 1).getValues().flat().map(String);
   }
-  var nums = existentes.map(function(id){ return parseInt(id.replace("#","")) || 0; });
-  var maxNum = nums.length ? Math.max.apply(null, nums) : 0;
-  var nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
+
+  // Código manual: si el admin escribió uno, se usa tal cual (normalizado a
+  // "#0000"). Si está vacío, se sigue autogenerando como antes.
+  var idManual = String(datos.id || "").trim();
+  var nuevoId;
+  if (idManual) {
+    var soloDigitos = idManual.replace(/\D/g, "");
+    nuevoId = soloDigitos ? "#" + soloDigitos.padStart(4, "0") : idManual;
+    if (existentes.indexOf(nuevoId) !== -1) return respond(false, null, "Ese código ya existe");
+  } else {
+    var nums = existentes.map(function(id){ return parseInt(id.replace("#","")) || 0; });
+    var maxNum = nums.length ? Math.max.apply(null, nums) : 0;
+    nuevoId = "#" + String(maxNum + 1).padStart(4, "0");
+  }
 
   var folderId = "";
   try { folderId = crearCarpetaPropiedad(nuevoId + " " + nombre); } catch(e) { Logger.log("Drive: " + e.message); }
