@@ -642,6 +642,7 @@ function App() {
       action: 'actualizarPropiedad',
       id: oldId,
       datos: {
+        id: datos.id,
         nombre: datos.nombre,
         precioAseo: datos.precio,
         acceso: datos.acceso,
@@ -651,8 +652,15 @@ function App() {
         airbnbLink: datos.airbnbLink || '',
       },
     }).then(res => {
-      if (res && res.ok) showToast('Propiedad actualizada');
-      else {
+      if (res && res.ok) {
+        showToast('Propiedad actualizada');
+        // El código pudo cambiar (rename de columna A) — recargamos desde el
+        // backend en vez de parchear el id localmente, para no desincronizar
+        // referencias (aseos, etc.) con el id viejo que quedó en memoria.
+        if (res.data && res.data.id && res.data.id !== oldId) {
+          loadDataFor(session.nombre, session.rol);
+        }
+      } else {
         setLiveProps(prev); setProps(prev);
         showToast('Error guardando: ' + ((res && res.error) || 'sin conexión'));
       }

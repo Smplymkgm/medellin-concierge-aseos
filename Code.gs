@@ -1281,6 +1281,24 @@ function handleActualizarPropiedad(body) {
   for (var i = 0; i < existentes.length; i++) {
     if (String(existentes[i][0]).trim() !== id) continue;
     var fila = i + 2;
+
+    // Cambio de código (columna A): solo si viene un id nuevo, distinto y
+    // no choca con otra propiedad. No toca aseos ya sincronizados con el
+    // código viejo (Todas las Reservas / Todos los Aseos) — solo renombra
+    // la propiedad en su hoja.
+    var idNuevo = String(datos.id || "").trim();
+    if (idNuevo && idNuevo !== id) {
+      var soloDigitosE = idNuevo.replace(/\D/g, "");
+      idNuevo = soloDigitosE ? "#" + soloDigitosE.padStart(4, "0") : idNuevo;
+      for (var e = 0; e < existentes.length; e++) {
+        if (e !== i && String(existentes[e][0]).trim() === idNuevo) {
+          return respond(false, null, "Ese código ya existe");
+        }
+      }
+      hoja.getRange(fila, 1).setValue(idNuevo);
+      id = idNuevo;
+    }
+
     if (datos.nombre               !== undefined) hoja.getRange(fila, 2).setValue(datos.nombre);
     if (datos.precioAseo           !== undefined) hoja.getRange(fila, 3).setValue(Number(datos.precioAseo));
     if (datos.acceso               !== undefined) hoja.getRange(fila, 4).setValue(datos.acceso);
@@ -1301,7 +1319,7 @@ function handleActualizarPropiedad(body) {
     // Col J/K (10/11) = mapsLink/airbnbLink — nuevas, después de I "Activa".
     if (datos.mapsLink   !== undefined) hoja.getRange(fila, 10).setValue(datos.mapsLink);
     if (datos.airbnbLink !== undefined) hoja.getRange(fila, 11).setValue(datos.airbnbLink);
-    return respond(true, null);
+    return respond(true, { id: id });
   }
   return respond(false, null, "Propiedad no encontrada: " + id);
 }
