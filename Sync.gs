@@ -171,7 +171,7 @@ function sincronizarCalendarios() {
     }
     guardarAusentesSoftCancel(nuevosAusentes);
 
-    escribirReservas(hoja, reservas, guardado);
+    escribirReservas(hoja, reservas, guardado, leerDesasignadosManual());
 
     // Escribir debajo las pendientes ausentes que PRESERVAMOS (glitch de feed o
     // dentro del periodo de gracia). Son pendientes vigentes, no cancelaciones.
@@ -234,6 +234,34 @@ function guardarAusentesSoftCancel(mapa) {
       .setProperty(SOFTCANCEL_PROP_KEY, JSON.stringify(mapa || {}));
   } catch(e) {
     Logger.log("guardarAusentesSoftCancel: " + e.message);
+  }
+}
+
+// ------------------------------------------------------------
+// Desasignados a propósito: cuando el admin deja un aseo "sin asignar" desde
+// asignarAseo, escribirReservas NO debe reponer la empleadaAuto de la
+// propiedad en la próxima sync (antes lo hacía, por eso la desasignación
+// "se revertía sola" al rato). Se guarda en ScriptProperties, igual que el
+// soft-cancel, para no tocar el esquema de la hoja. handleAsignarAseo agrega
+// el código aquí al vaciar la aseadora, y lo saca cuando se vuelve a asignar.
+// ------------------------------------------------------------
+var DESASIGNADOS_PROP_KEY = "desasignados_manual";
+
+function leerDesasignadosManual() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(DESASIGNADOS_PROP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function marcarDesasignadoManual(codigo, desasignado) {
+  try {
+    var mapa = leerDesasignadosManual();
+    if (desasignado) mapa[codigo] = true; else delete mapa[codigo];
+    PropertiesService.getScriptProperties()
+      .setProperty(DESASIGNADOS_PROP_KEY, JSON.stringify(mapa));
+  } catch(e) {
+    Logger.log("marcarDesasignadoManual: " + e.message);
   }
 }
 
@@ -436,12 +464,13 @@ function limpiarDatos(hoja) {
   } catch(e) { Logger.log("limpiarDatos delete: " + e.message); }
 }
 
-function escribirReservas(hoja, reservas, guardado) {
+function escribirReservas(hoja, reservas, guardado, desasignados) {
   if (!reservas.length) return;
+  desasignados = desasignados || {};
   var filas = reservas.map(function(r) {
     var g   = guardado[r.codigo] || {};
     var emp = g.empleada || "";
-    if (!emp && r.empleadaAuto) emp = r.empleadaAuto;
+    if (!emp && r.empleadaAuto && !desasignados[r.codigo]) emp = r.empleadaAuto;
     var estado = g.estado === "Finalizado" ? "Finalizado" : (g.estado || r.estado);
     return [r.codigo, r.id, r.propiedad, r.checkin, r.checkout, r.noches,
             estado, emp, r.precio, g.notas||"", g.acceso||r.acceso||"",

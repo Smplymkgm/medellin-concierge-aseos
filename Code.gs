@@ -825,6 +825,11 @@ function handleAsignarAseo(body) {
 
     if (!aseoInfo) return respond(false, null, "Aseo no encontrado");
 
+    // Registra si esta desasignación fue a propósito (aseadora vacía), para
+    // que la próxima sync (Sync.gs escribirReservas) no reponga la
+    // empleadaAuto de la propiedad encima del vacío deliberado.
+    try { marcarDesasignadoManual(codigo, !aseadora); } catch(e) { Logger.log("marcarDesasignadoManual: " + e.message); }
+
     // Solo notificar si la aseadora realmente cambió (evita emails duplicados
     // cuando el admin guarda el mismo valor o el frontend reintenta la llamada)
     var aseadoraCambio = aseadora && aseadora !== aseadoraAnterior;
