@@ -112,11 +112,19 @@ function doPost(e) {
     if (action === "registrarVideo")      return handleRegistrarVideo(body);
     if (action === "agregarAseo")         return handleAgregarAseo(body);
     if (action === "getHistorial")        return handleGetHistorial(body);
-    if (action === "runSelfTest")         return respond(true, runSelfTest());
-    if (action === "fixEstadoValidation") return respond(true, fixEstadoValidation());
-    if (action === "limpiarFilaDiagnostico") return respond(true, limpiarFilaDiagnostico());
-    if (action === "repararPreciosAseos")  return handleRepararPreciosAseos(body);
-    if (action === "repararIdsPropiedad")  return handleRepararIdsPropiedad(body);
+    // Mantenimiento — antes alcanzable por cualquiera con la URL del web app
+    // (pública por diseño, aparece en el código fuente del frontend), sin
+    // ningún chequeo. limpiarFilaDiagnostico borra filas, fixEstadoValidation
+    // reescribe validaciones — requieren el PIN de Admin igual que el login.
+    var accionesMantenimiento = ["runSelfTest", "fixEstadoValidation", "limpiarFilaDiagnostico", "repararPreciosAseos", "repararIdsPropiedad"];
+    if (accionesMantenimiento.indexOf(action) !== -1) {
+      if (!esAdminValido(body)) return respond(false, null, "No autorizado");
+      if (action === "runSelfTest")            return respond(true, runSelfTest());
+      if (action === "fixEstadoValidation")    return respond(true, fixEstadoValidation());
+      if (action === "limpiarFilaDiagnostico") return respond(true, limpiarFilaDiagnostico());
+      if (action === "repararPreciosAseos")    return handleRepararPreciosAseos(body);
+      if (action === "repararIdsPropiedad")    return handleRepararIdsPropiedad(body);
+    }
 
     // Endpoints debug/inspect/run* eliminados en la auditoría de
     // producción. Las funciones administrativas se ejecutan vía el menú
@@ -167,6 +175,22 @@ function handleLogin(body) {
 
   var rol = nombre.toLowerCase() === "admin" ? "admin" : "aseadora";
   return respond(true, { rol: rol, nombre: usuario.nombre });
+}
+
+// Guard para las acciones de mantenimiento del router (ver doPost) — mismo
+// chequeo que handleLogin (nombre "Admin" + PIN de la fila Admin en
+// Personal), sin depender de una sesión: cada request de mantenimiento debe
+// venir con { nombre: "Admin", pin: "..." }.
+function esAdminValido(body) {
+  var nombre = String(body.nombre || "").trim();
+  var pin    = String(body.pin    || "").trim();
+  if (nombre.toLowerCase() !== "admin" || !pin) return false;
+
+  var personal = getPersonal();
+  for (var i = 0; i < personal.length; i++) {
+    if (personal[i].nombre.toLowerCase() === "admin") return personal[i].pin === pin;
+  }
+  return false;
 }
 
 // ============================================================
@@ -3133,7 +3157,10 @@ function runSelfTest() {
   check("Triggers programados existen", function() {
     var t = ScriptApp.getProjectTriggers();
     var names = t.map(function(x){ return x.getHandlerFunction(); });
-    var requeridos = ["sincronizarCalendarios", "sincronizarGoogleCalendar", "autoCompletarAseosPasados"];
+    // autoCompletarAseosPasados está deshabilitada a propósito (ver línea
+    // ~1913) y crearTriggersAutomaticos nunca la programa — no pertenece
+    // acá, hacía que este check fallara siempre sin importar el estado real.
+    var requeridos = ["sincronizarCalendarios", "sincronizarGoogleCalendar"];
     var faltan = requeridos.filter(function(r){ return names.indexOf(r) === -1; });
     if (faltan.length) throw new Error("faltan triggers: " + faltan.join(", "));
     return "n=" + t.length;

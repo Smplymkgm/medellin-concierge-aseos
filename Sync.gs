@@ -591,6 +591,24 @@ function sincronizarHojaAseos() {
 // ============================================================
 
 function sincronizarGoogleCalendar() {
+  // Corre cada 2h mientras sincronizarCalendarios corre cada 6h + diario —
+  // sin lock, un cruce de horarios podía dejar esta función escribiendo
+  // columna L (eventId) con índices de fila ya obsoletos si el otro sync
+  // vaciaba/reescribía la hoja a mitad de este loop. Mismo lock que usa
+  // sincronizarCalendarios para la misma hoja.
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch(e) {
+    Logger.log("sincronizarGoogleCalendar: otro proceso en ejecucion, abortando");
+    return;
+  }
+  try {
+    _sincronizarGoogleCalendarImpl();
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
+}
+
+function _sincronizarGoogleCalendarImpl() {
   var ss   = SpreadsheetApp.getActiveSpreadsheet();
   var hoja = ss.getSheetByName(CONFIG.hojaMaestra);
   if (!hoja || hoja.getLastRow() < 2) return;
@@ -652,11 +670,18 @@ function sincronizarGoogleCalendar() {
         }
       } catch(e) {}
     }
-    var nEv = cal.createEvent(titulo, inicio, fin, {
-      guests: emp.email, sendInvites: true, description: desc
-    });
-    hoja.getRange(fila, 12).setValue(nEv.getId());
-    creados++;
+    // Antes sin try/catch: una excepción acá (cuota, email inválido) abortaba
+    // la función entera a mitad del loop, dejando el resto de filas sin
+    // procesar en ese run. Ahora se loguea y sigue con la siguiente fila.
+    try {
+      var nEv = cal.createEvent(titulo, inicio, fin, {
+        guests: emp.email, sendInvites: true, description: desc
+      });
+      hoja.getRange(fila, 12).setValue(nEv.getId());
+      creados++;
+    } catch(e) {
+      Logger.log("sincronizarGoogleCalendar: error creando evento para " + codigo + ": " + e.message);
+    }
   }
 
   SpreadsheetApp.getActiveSpreadsheet().toast(
