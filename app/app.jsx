@@ -429,6 +429,24 @@ function App() {
   // eslint-disable-next-line
   }, []);
 
+  // Refresh en segundo plano: las acciones (completar, asignar, mover…) ya
+  // actualizan el estado local al toque para quien las hace, pero eso NO
+  // llega a otras sesiones — la aseadora completa un aseo en su celular y el
+  // admin, en el suyo, no se entera hasta refrescar a mano. Se reconcilia
+  // solo con el backend cada 3 min y al volver a foreground (Google Sheets
+  // no tiene push; esto es lo más cercano sin agregar infraestructura nueva).
+  useEffectL(function() {
+    if (!session || !session.nombre || !session.rol) return;
+    function refrescar() { loadDataFor(session.nombre, session.rol); }
+    var intervalo = setInterval(refrescar, 3 * 60 * 1000);
+    function onVisible() { if (document.visibilityState === 'visible') refrescar(); }
+    document.addEventListener('visibilitychange', onVisible);
+    return function() {
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [session && session.nombre, session && session.rol]);
+
   function toggle(id) { setOpenId(o => o === id ? null : id); }
   function shiftMonth(dir) {
     let m = calMonth + dir, y = calYear;
