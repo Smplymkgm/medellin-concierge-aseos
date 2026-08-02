@@ -1440,6 +1440,30 @@ function repararIdsPropiedad_aplicar() {
   Logger.log(r.cambios.length + " cambio(s) aplicado(s).");
 }
 
+// Diagnóstico: compara getPersonal() (lo que la app ve) contra la lista de
+// validación de datos ACTUAL en la columna H del master (lo que Sheets
+// realmente exige al escribir). Si difieren, el dropdown quedó desactualizado
+// — este wrapper lo corrige llamando aplicarDropdowns de nuevo.
+function diagnosticoAseadoras() {
+  var personal = getPersonal().map(function(p) { return p.nombre; });
+  Logger.log("Personal activo (getPersonal): " + JSON.stringify(personal));
+
+  var ss = getSS();
+  var master = ss.getSheetByName(CONFIG.hojaMaestra);
+  if (!master) { Logger.log("No existe la hoja " + CONFIG.hojaMaestra); return; }
+
+  var val = master.getRange("H2").getDataValidation();
+  if (!val) {
+    Logger.log("H2 no tiene ninguna regla de validación (raro, revisar).");
+  } else {
+    var criteria = val.getCriteriaValues();
+    Logger.log("Lista de validación actual en H2 (columna aseadora): " + JSON.stringify(criteria[0]));
+  }
+
+  aplicarDropdowns(master);
+  Logger.log("Dropdown reaplicado con la lista actual de Personal.");
+}
+
 // ============================================================
 // PERSONAL
 // ============================================================
