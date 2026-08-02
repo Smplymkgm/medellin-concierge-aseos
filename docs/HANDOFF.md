@@ -14,8 +14,8 @@ Web app para gestionar aseos de propiedades Airbnb en Medellín. Mobile-first. D
 ## Quien usa
 
 - 1 admin (Mike, michaelmgm1249@gmail.com), PIN `2025`
-- 3 aseadoras: Ana (PIN 1234), Fernanda (5678), Claudia (9012)
-- ~25 propiedades sincronizadas vía iCal Airbnb
+- 4 aseadoras: Ana, Fernanda, Claudia, Marilerxi (agregada ago 2026)
+- ~28-29 propiedades sincronizadas vía iCal Airbnb
 
 ## Repo layout
 
@@ -88,6 +88,16 @@ gh run rerun <RUN_ID>
 
 Última renovación: 15 jul 2026.
 
+### Si la app pide "reautorizar" cada 7 días (síntoma distinto al de arriba)
+
+Esto NO es lo mismo que `CLASPRC_JSON` caducando — ese es el token de `clasp` (la CLI que usamos para deployar). Este otro es la autorización que Google le pide al **dueño del script** para leer/escribir Sheets, Calendar, Drive y mandar emails — si el proyecto de Google Cloud vinculado al Apps Script está en modo "Externo + Prueba", Google expira esos tokens cada 7 días sin importar qué cuenta sea la dueña.
+
+Arreglado ago 2026: el Apps Script estaba usando el proyecto de GCP automático/oculto que Google crea por default (no aparece en la consola, no se puede configurar). Se creó un proyecto estándar visible (**`medcon-cleanings`**, número `705233625433`, dentro de la organización `medellinconcierge.net`) y se vinculó desde el editor de Apps Script → Configuración del proyecto → "Proyecto de Google Cloud Platform" → Cambiar proyecto. Con el proyecto visible, se configuró la pantalla de consentimiento OAuth (ahora "Google Auth Platform" en la consola) con **Tipo de usuario: Interno** — disponible solo porque la cuenta es Workspace con dominio propio. Esto elimina el límite de 7 días sin necesidad de pasar por el proceso de verificación de Google.
+
+Si esto vuelve a pasar (o si algún día se migra el proyecto a otra cuenta): revisar `console.cloud.google.com/apis/credentials/consent?project=medcon-cleanings` — debe decir "Interno". Si dice "Externo" y "Prueba", ahí está la causa.
+
+⚠️ Si en algún momento se migra este proyecto a una cuenta Gmail personal (no Workspace), la opción "Interno" deja de existir — un Gmail personal solo puede estar en "Externo", y en modo "Prueba" vuelve el límite de 7 días. Evaluar esto antes de cualquier migración de cuenta.
+
 ### URL del API
 
 `https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec`
@@ -152,6 +162,17 @@ OAuth scopes en `appsscript.json`:
 | Multiple aseadoras completando al mismo tiempo | Race condition | Resuelto en Fase 2 — LockService |
 | Form data se descartaba al completar | Frontend mandaba, backend ignoraba | Resuelto en Fase 6 — cols 14-20 |
 | Historial contaba por fecha de completar | Bug que sumaba aseos al mes anterior | Resuelto — ahora cuenta por checkout |
+| ~~Desasignar un aseo se revertía solo~~ | `escribirReservas` reponía la `empleadaAuto` de la propiedad sobre el vacío deliberado en cada sync | Resuelto ago 2026 — flag `desasignados_manual` en ScriptProperties, respetado por el sync |
+| ~~No se podía poner código manual a una propiedad nueva~~ | El payload de `agregarPropiedad` nunca mandaba el `id`; el backend siempre autogeneraba | Resuelto ago 2026 |
+| ~~Renombrar código de propiedad dejaba aseos huérfanos~~ | El rename no hacía cascade del `idProp` a "Todas las Reservas"/"Todos los Aseos" | Resuelto ago 2026 — `_renombrarIdPropEnReservas` + `repararIdsPropiedad` para huérfanos viejos |
+| ~~Aseadora nueva no podía recibir aseos ("violates the data validation rule")~~ | Dos causas combinadas: "Agregar aseadora" nunca llamaba al backend (100% local), y el dropdown de validación (columnas H del master y G de "Todos los Aseos") tenía la lista de nombres hardcodeada | Resuelto ago 2026 — endpoint `agregarPersonal` real + dropdown dinámico desde `getPersonal()`, refrescado al toque en ambas hojas |
+| App a veces no cargaba aseos hasta refrescar a mano | `gasPost` sin timeout + `catch` vacío marcaba `dataLoaded=true` igual si la carga fallaba — error indistinguible de "sin aseos hoy" | Resuelto ago 2026 — timeout 20s, 2 reintentos con backoff, banner real de error |
+| Pestaña abierta se quedaba con versión vieja de la app | Nada le avisaba que había un deploy nuevo | Resuelto ago 2026 — `version.json` + chequeo cada 5 min / al volver a foreground, recarga sola |
+| Admin no veía en el momento lo que completaba la aseadora (y viceversa) | Sin push entre sesiones; solo se actualizaba con refresh manual | Resuelto ago 2026 — refresh silencioso cada 3 min / al volver a foreground |
+| Endpoints de mantenimiento (`runSelfTest`, `limpiarFilaDiagnostico`, etc.) alcanzables por cualquiera con la URL, sin auth | Router de `doPost` los exponía sin chequeo | Resuelto ago 2026 — requieren `{nombre:"Admin", pin}` (`esAdminValido`) |
+| Race condition entre `sincronizarCalendarios` y `sincronizarGoogleCalendar` | La segunda no tenía `LockService`, ambas escriben la misma columna del master | Resuelto ago 2026 — mismo lock en ambas |
+| `runSelfTest` fallaba siempre en un check | Exigía un trigger (`autoCompletarAseosPasados`) que está deshabilitado a propósito y nunca se crea | Resuelto ago 2026 |
+| Sync de Airbnb tardaría cada vez más al crecer el número de propiedades (techo ~200-400 antes de dejar de terminar) | Un `UrlFetchApp.fetch()` secuencial por propiedad | Resuelto ago 2026 — `UrlFetchApp.fetchAll()` en lotes de 50, resuelto en paralelo del lado de Google |
 
 ## Reglas de la casa
 
