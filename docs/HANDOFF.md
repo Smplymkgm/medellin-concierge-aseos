@@ -98,6 +98,20 @@ Si esto vuelve a pasar (o si algún día se migra el proyecto a otra cuenta): re
 
 ⚠️ Si en algún momento se migra este proyecto a una cuenta Gmail personal (no Workspace), la opción "Interno" deja de existir — un Gmail personal solo puede estar en "Externo", y en modo "Prueba" vuelve el límite de 7 días. Evaluar esto antes de cualquier migración de cuenta.
 
+### Al vincular un proyecto de GCP nuevo: hay que habilitar la Drive API a mano
+
+Efecto colateral del cambio de arriba, descubierto ago 2026: subir un video daba `Error 403 — Google Drive API has not been used in project 705233625433 before or it is disabled`. El proyecto de GCP oculto/automático tenía las APIs necesarias habilitadas por Google de forma invisible; un proyecto estándar nuevo no las trae solas.
+
+Solo hace falta para las llamadas que van por HTTP directo (`UrlFetchApp.fetch` a `googleapis.com/...`) en vez del servicio integrado de Apps Script — en este proyecto es **una sola**: `handleGetUploadUrl` en `Code.gs`, que arma la URL de subida resumible de video (`googleapis.com/upload/drive/v3/files`). Todo lo demás que toca Drive (`DriveApp.*`) y Calendar (`CalendarApp.*`) usa los servicios integrados de Apps Script y no necesita este paso.
+
+Arreglo (una sola vez, ya hecho):
+```text
+https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=705233625433
+```
+→ botón "Habilitar" → esperar 1-2 min a que propague.
+
+Si en el futuro se agrega otra llamada por `UrlFetchApp.fetch` directo a una API de Google (Sheets API, Calendar API v3, etc. en vez de `SpreadsheetApp`/`CalendarApp`), va a pedir lo mismo — habilitarla en `console.cloud.google.com/apis/library?project=705233625433`.
+
 ### URL del API
 
 `https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec`
