@@ -1403,6 +1403,36 @@ function repararIdsPropiedad_verCambios() {
   Logger.log(r.cambios.length + " cambio(s) pendiente(s). Nada se escribió (dryRun).");
 }
 
+// Diagnóstico más amplio: lista TODAS las filas con idProp que no matchea
+// ninguna propiedad actual, hayan podido emparejarse por nombre o no. Solo
+// lee, no escribe nada. Útil cuando _verCambios da 0 pero igual se ve una
+// tarjeta "Propiedad" genérica en la app (idProp vacío, o nombre distinto
+// al catálogo por typo/acento/espacios).
+function repararIdsPropiedad_diagnostico() {
+  var ss = getSS();
+  var idsValidos = {};
+  getPropiedades().forEach(function(p) { idsValidos[p.id] = true; });
+
+  var huerfanas = [];
+  [CONFIG.hojaMaestra, CONFIG.hojaAseos].forEach(function(nombreHoja) {
+    var hoja = ss.getSheetByName(nombreHoja);
+    if (!hoja || hoja.getLastRow() < 2) return;
+    var vals = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getValues();  // A..G
+    for (var i = 0; i < vals.length; i++) {
+      var codigo = String(vals[i][0] || "").trim();
+      var idProp = String(vals[i][1] || "").trim();
+      if (!codigo || idsValidos[idProp]) continue;
+      huerfanas.push({
+        hoja: nombreHoja, fila: i + 2, codigo: codigo,
+        idProp: idProp || "(vacío)", propiedad: String(vals[i][2] || ""),
+        checkout: String(vals[i][4] || ""), estado: String(vals[i][6] || ""),
+      });
+    }
+  });
+  Logger.log(JSON.stringify(huerfanas, null, 2));
+  Logger.log(huerfanas.length + " fila(s) con idProp que no matchea ninguna propiedad actual.");
+}
+
 function repararIdsPropiedad_aplicar() {
   var r = _repararIdsPropiedadCore(false);
   Logger.log(JSON.stringify(r.cambios, null, 2));
