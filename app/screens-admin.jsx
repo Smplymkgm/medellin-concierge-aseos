@@ -77,7 +77,7 @@ function AseosScreen({ ctx }) {
 
       <div className="aseo-list" style={{ paddingTop: 4 }}>
         {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
-        {ctx.dataLoaded && groups.length === 0 && <div className="empty"><Icon name="list" size={28} /><div className="body">Sin aseos con estos filtros</div></div>}
+        {ctx.dataLoaded && !ctx.loadError && groups.length === 0 && <div className="empty"><Icon name="list" size={28} /><div className="body">Sin aseos con estos filtros</div></div>}
         {groups.map(g => (
           <div className="day-group" key={g.key}>
             <div className="day-head">
@@ -135,7 +135,7 @@ function PropiedadesScreen({ ctx }) {
 
       <div className="prop-list">
         {!ctx.dataLoaded && <LoadingState label="Cargando propiedades…" />}
-        {ctx.dataLoaded && filtradas.length === 0 && (
+        {ctx.dataLoaded && !ctx.loadError && filtradas.length === 0 && (
           <div className="empty"><Icon name="home" size={28} /><div className="body">Sin resultados</div></div>
         )}
         {filtradas.map(p => (
@@ -419,7 +419,7 @@ function HistorialAdminScreen({ ctx }) {
       <div className="aseo-list">
         <div className="day-head"><span className="label sec">Detalle</span></div>
         {!ctx.dataLoaded && <LoadingState label="Cargando historial…" />}
-        {ctx.dataLoaded && list.length === 0 && (
+        {ctx.dataLoaded && !ctx.loadError && list.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos con estos filtros</div></div>
         )}
         {list.map(a => (
