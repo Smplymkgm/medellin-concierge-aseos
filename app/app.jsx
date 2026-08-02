@@ -676,11 +676,32 @@ function App() {
 
   function openAddCleaner() { setAddCleanerOpen(true); }
   function doAddCleaner(datos) {
+    const prev = personal;
     const nueva = { codigo: nextPersonalId(), nombre: datos.nombre, pin: datos.pin, rol: 'aseadora', tel: datos.tel, email: datos.email };
     const next = [...personal, nueva];
     setLivePersonal(next); setPersonal(next);
     setAddCleanerOpen(false);
-    showToast('Aseadora creada · ' + nueva.codigo);
+    showToast('Creando aseadora…');
+
+    // Persistir vía API — antes esto era 100% optimista (nunca tocaba el
+    // backend), así que la aseadora nueva no existía en la hoja Personal ni
+    // en el dropdown de asignación, y asignarle un aseo tiraba error de
+    // validación de datos.
+    gasPost({
+      action: 'agregarPersonal',
+      datos: { nombre: datos.nombre, pin: datos.pin, tel: datos.tel, email: datos.email },
+    }).then(res => {
+      if (res && res.ok) {
+        showToast('Aseadora creada · ' + nueva.nombre);
+        loadDataFor(session.nombre, session.rol);
+      } else {
+        setLivePersonal(prev); setPersonal(prev);
+        showToast('Error creando: ' + ((res && res.error) || 'sin conexión'));
+      }
+    }).catch(() => {
+      setLivePersonal(prev); setPersonal(prev);
+      showToast('Error de conexión, no se creó');
+    });
   }
   function openEditCleaner(persona) { setEditCleaner(persona); setEditCleanerOpen(true); }
   function doSaveCleaner(persona, cambios) {
