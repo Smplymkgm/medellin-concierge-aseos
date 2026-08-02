@@ -53,11 +53,23 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// Timeout explícito: sin esto, un fetch colgado (mala señal en el celular,
+// cold-start de Apps Script) nunca resuelve ni rechaza — la promesa queda
+// pendiente para siempre y loadDataFor jamás llega a su .finally(), así que
+// la pantalla se queda en "Cargando…" indefinidamente ("a veces nunca
+// aparecen"). 20s alcanza incluso para un cold-start lento de Apps Script.
+const GAS_TIMEOUT_MS = 20000;
+
 function gasPost(body) {
+  var controller = new AbortController();
+  var timer = setTimeout(() => controller.abort(), GAS_TIMEOUT_MS);
   return fetch(GAS_URL, {
     method: 'POST',
     body: JSON.stringify(body),
-  }).then(r => r.json());
+    signal: controller.signal,
+  })
+    .then(r => r.json())
+    .finally(() => clearTimeout(timer));
 }
 
 /* ---- Session persistence ---- */
@@ -305,6 +317,7 @@ function App() {
   const [openId, setOpenId]     = useStateL(null);
   const [propId, setPropId]     = useStateL(null);
   const [dataLoaded, setDataLoaded] = useStateL(false);
+  const [loadError, setLoadError]   = useStateL(false);
 
   // "Ver como" admin impersonation — puramente en memoria, NUNCA toca
   // localStorage/sesión real. viewAs = nombre de la aseadora impersonada.
@@ -370,22 +383,39 @@ function App() {
     };
   }, []);
 
-  function loadDataFor(nombre, rol) {
+  // Antes: un solo intento, catch vacío, y dataLoaded=true pasara lo que
+  // pasara. Un fetch fallido (cold-start de Apps Script, wifi débil) quedaba
+  // indistinguible de "hoy no hay aseos" — pantalla vacía silenciosa, sin
+  // error y sin reintento, hasta que alguien tocaba "Actualizar" a mano.
+  // Ahora reintenta solo (con backoff) y, si todo falla, deja loadError=true
+  // para que la UI muestre un banner real en vez de mentir con "sin aseos".
+  function loadDataFor(nombre, rol, intento) {
+    intento = intento || 0;
     setSyncing(true);
     return gasPost({ action: 'getDatos', nombre: nombre, rol: rol })
       .then(function(res) {
-        if (res.ok && res.data) {
-          const realAseos    = transformAseos(res.data.aseos);
-          const realProps    = transformProps(res.data.propiedades);
-          const realPersonal = transformPersonal(res.data.personal);
-          setAseos(realAseos);
-          setLiveProps(realProps); setProps(realProps);
-          setLivePersonal(realPersonal); setPersonal(realPersonal);
-          setLastSync(new Date());
-        }
+        if (!res || !res.ok || !res.data) throw new Error((res && res.error) || 'Respuesta inválida');
+        const realAseos    = transformAseos(res.data.aseos);
+        const realProps    = transformProps(res.data.propiedades);
+        const realPersonal = transformPersonal(res.data.personal);
+        setAseos(realAseos);
+        setLiveProps(realProps); setProps(realProps);
+        setLivePersonal(realPersonal); setPersonal(realPersonal);
+        setLastSync(new Date());
+        setLoadError(false);
+        setSyncing(false); setDataLoaded(true);
+        return true;
       })
-      .catch(function() {})
-      .finally(function() { setSyncing(false); setDataLoaded(true); });
+      .catch(function() {
+        if (intento < 2) {
+          var espera = intento === 0 ? 1500 : 3500;
+          return new Promise(function(resolve) { setTimeout(resolve, espera); })
+            .then(function() { return loadDataFor(nombre, rol, intento + 1); });
+        }
+        setLoadError(true);
+        setSyncing(false); setDataLoaded(true);
+        return false;
+      });
   }
 
   function doIniciar(a) {
@@ -885,11 +915,14 @@ function App() {
     filter, setFilter,
     openSync: () => {
       if (syncing) return;
-      loadDataFor(effectiveUser, isAdmin ? 'admin' : 'aseadora').then(() => showToast('Datos actualizados'));
+      loadDataFor(effectiveUser, isAdmin ? 'admin' : 'aseadora').then(ok => {
+        showToast(ok ? 'Datos actualizados' : 'Sin conexión, no se pudo actualizar');
+      });
     },
     syncing,
     lastSync,
     dataLoaded,
+    loadError,
     viewAs, startViewAs, exitViewAs,
   };
 
@@ -927,6 +960,15 @@ function App() {
   return (
     <div className="stage">
       <div className="screen">
+        {loadError && (
+          <div className="viewas-banner" style={{ background: '#b3261e' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="alert" size={16} /> Sin conexión — los datos que ves pueden estar desactualizados.
+            </span>
+            <button className="btn btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }}
+              onClick={ctx.openSync} disabled={syncing}>{syncing ? 'Reintentando…' : 'Reintentar'}</button>
+          </div>
+        )}
         {viewAs && (
           <div className="viewas-banner">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

@@ -53,7 +53,7 @@ function HoyScreen({ ctx }) {
           <span className="caption count">{sortedHoy.length} {sortedHoy.length === 1 ? 'aseo' : 'aseos'}</span>
         </div>
         {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
-        {ctx.dataLoaded && sortedHoy.length === 0 && (
+        {ctx.dataLoaded && !ctx.loadError && sortedHoy.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos para hoy</div></div>
         )}
         {sortedHoy.map(a => (
@@ -103,7 +103,7 @@ function CalendarioScreen({ ctx, role }) {
       <div className="cal-daylist">
         <div className="cal-daylabel label sec">{ctx.calSel ? fmtDate(ctx.calSel) : 'Selecciona un día'}</div>
         {!ctx.dataLoaded && <LoadingState label="Cargando aseos…" />}
-        {ctx.dataLoaded && ctx.calSel && dayItems.length === 0 && <div className="caption" style={{ paddingBottom: 16 }}>Sin aseos este día</div>}
+        {ctx.dataLoaded && !ctx.loadError && ctx.calSel && dayItems.length === 0 && <div className="caption" style={{ paddingBottom: 16 }}>Sin aseos este día</div>}
         {dayItems.map(a => (
           <AseoCard key={a.codigo} aseo={a} role={role}
             open={ctx.openId === a.codigo} onToggle={() => ctx.toggle(a.codigo)}
@@ -217,7 +217,7 @@ function HistorialScreen({ ctx }) {
       <div className="aseo-list">
         <div className="day-head"><span className="label sec">Completados</span></div>
         {!ctx.dataLoaded && <LoadingState label="Cargando historial…" />}
-        {ctx.dataLoaded && inPeriod.length === 0 && (
+        {ctx.dataLoaded && !ctx.loadError && inPeriod.length === 0 && (
           <div className="empty"><Icon name="check" size={28} /><div className="body">Sin aseos en este período</div></div>
         )}
         {inPeriod.map(a => (
