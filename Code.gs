@@ -1450,18 +1450,31 @@ function diagnosticoAseadoras() {
 
   var ss = getSS();
   var master = ss.getSheetByName(CONFIG.hojaMaestra);
-  if (!master) { Logger.log("No existe la hoja " + CONFIG.hojaMaestra); return; }
-
-  var val = master.getRange("H2").getDataValidation();
-  if (!val) {
-    Logger.log("H2 no tiene ninguna regla de validación (raro, revisar).");
+  if (master) {
+    var val = master.getRange("H2").getDataValidation();
+    Logger.log(val
+      ? "Master H2 (aseadora, pendientes): " + JSON.stringify(val.getCriteriaValues()[0])
+      : "Master H2 no tiene regla de validación (raro, revisar).");
+    aplicarDropdowns(master);
   } else {
-    var criteria = val.getCriteriaValues();
-    Logger.log("Lista de validación actual en H2 (columna aseadora): " + JSON.stringify(criteria[0]));
+    Logger.log("No existe la hoja " + CONFIG.hojaMaestra);
   }
 
-  aplicarDropdowns(master);
-  Logger.log("Dropdown reaplicado con la lista actual de Personal.");
+  // "Todos los Aseos" col G también tiene su propia validación de aseadora,
+  // independiente del master — hay que refrescarla por separado o un aseo
+  // ya iniciado/histórico sigue rechazando nombres nuevos.
+  var hojaAseos = ss.getSheetByName(CONFIG.hojaAseos);
+  if (hojaAseos) {
+    var val2 = hojaAseos.getRange("G2").getDataValidation();
+    Logger.log(val2
+      ? "Todos los Aseos G2 (aseadora, histórico): " + JSON.stringify(val2.getCriteriaValues()[0])
+      : "Todos los Aseos G2 no tiene regla de validación.");
+    aplicarDropdownAseadorasEnTodosLosAseos();
+  } else {
+    Logger.log("No existe la hoja " + CONFIG.hojaAseos);
+  }
+
+  Logger.log("Dropdowns reaplicados en ambas hojas con la lista actual de Personal.");
 }
 
 // ============================================================
@@ -1535,13 +1548,16 @@ function handleAgregarPersonal(body) {
       .setBackground(fi % 2 === 0 ? "#f8f9fa" : "#ffffff")
       .setFontFamily("Arial").setFontSize(10);
 
-    // El dropdown de aseadoras (columna H del master) queda desactualizado
-    // hasta el próximo sync (cada 6h) si no se refresca ahora — por eso
-    // aparecía el error de validación aun con el nombre ya en Personal.
+    // El dropdown de aseadoras queda desactualizado hasta el próximo sync
+    // (cada 6h) si no se refresca ahora — por eso aparecía el error de
+    // validación aun con el nombre ya en Personal. Son DOS columnas
+    // independientes: master col H (aplicarDropdowns) y "Todos los Aseos"
+    // col G (aseos ya iniciados/históricos).
     try {
       var master = ss.getSheetByName(CONFIG.hojaMaestra);
       if (master) aplicarDropdowns(master);
-    } catch(e) { Logger.log("aplicarDropdowns tras alta de personal: " + e.message); }
+      aplicarDropdownAseadorasEnTodosLosAseos();
+    } catch(e) { Logger.log("refrescar dropdowns tras alta de personal: " + e.message); }
 
     return respond(true, { nombre: nombre });
   } finally {

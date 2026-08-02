@@ -84,6 +84,7 @@ function sincronizarCalendarios() {
     limpiarDatos(hoja);
     configurarEncabezados(hoja);
     aplicarDropdowns(hoja);
+    aplicarDropdownAseadorasEnTodosLosAseos();
 
     // Soft-cancel robusto: una reserva guardada que NO llegó en el iCal solo
     // se marca Cancelada si se cumplen las 3 condiciones. En cualquier otro
@@ -492,20 +493,38 @@ function escribirReservas(hoja, reservas, guardado, desasignados) {
 // agregar una aseadora en Personal alcanza; el próximo sync (máx. 6h, o
 // manual desde el menú) actualiza el dropdown solo.
 function aplicarDropdowns(hoja) {
-  var nombres = getPersonal().map(function(p) { return p.nombre; }).filter(Boolean);
-  // Nunca dejar la validación sin opciones (bloquearía TODA asignación) ni
-  // perder "Admin" si por algún motivo no está activo en Personal.
-  if (nombres.indexOf("Admin") === -1) nombres.push("Admin");
-  if (!nombres.length) nombres = ["Admin"];
-
   hoja.getRange("H2:H2000").setDataValidation(
     SpreadsheetApp.newDataValidation()
-      .requireValueInList(nombres, true)
+      .requireValueInList(listaAseadorasValidas(), true)
       .setAllowInvalid(false).build()
   );
   hoja.getRange("G2:G2000").setDataValidation(
     SpreadsheetApp.newDataValidation()
       .requireValueInList(["Confirmada","Cancelada","Pendiente","Finalizado"], true)
+      .setAllowInvalid(false).build()
+  );
+}
+
+function listaAseadorasValidas() {
+  var nombres = getPersonal().map(function(p) { return p.nombre; }).filter(Boolean);
+  // Nunca dejar la validación sin opciones (bloquearía TODA asignación) ni
+  // perder "Admin" si por algún motivo no está activo en Personal.
+  if (nombres.indexOf("Admin") === -1) nombres.push("Admin");
+  if (!nombres.length) nombres = ["Admin"];
+  return nombres;
+}
+
+// asignarAseo también puede escribir la aseadora en "Todos los Aseos"
+// columna G (aseos ya iniciados/históricos) — esa columna tiene su PROPIA
+// validación, independiente de la del master (columna H, arriba). Si no se
+// refresca acá también, una aseadora nueva sigue rompiendo la asignación en
+// cualquier aseo que ya tenga fila en esa hoja.
+function aplicarDropdownAseadorasEnTodosLosAseos() {
+  var hoja = getSS().getSheetByName(CONFIG.hojaAseos);
+  if (!hoja) return;
+  hoja.getRange(2, 7, Math.max(hoja.getMaxRows() - 1, 1), 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(listaAseadorasValidas(), true)
       .setAllowInvalid(false).build()
   );
 }
