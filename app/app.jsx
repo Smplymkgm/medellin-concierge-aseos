@@ -11,6 +11,27 @@ const GAS_URL = (function() {
   return 'https://script.google.com/macros/s/AKfycbwcMH9Ovbh0kS1QE_8kIqhnBd3fjHqYDvRwONARydXoYj67U9Kr5wT7Nukndbpo0tNG/exec';
 })();
 
+// Versión publicada en este load (el workflow deploy-pages la escribe en el
+// meta tag). Una pestaña dejada abierta nunca vuelve a pedir Index.html por
+// su cuenta — sin este chequeo activo, una aseadora puede quedarse días con
+// JS viejo cargado en memoria sin importar el cache-control de GitHub Pages.
+const APP_VERSION = (function() {
+  var m = document.querySelector('meta[name="app-version"]');
+  return (m && m.content) || 'dev';
+})();
+
+function checkForUpdate() {
+  if (APP_VERSION === 'dev') return;  // build local, sin deploy — no aplica
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.version && data.version !== APP_VERSION) {
+        location.reload();
+      }
+    })
+    .catch(function() { /* sin conexión: se reintenta en el próximo ciclo */ });
+}
+
 /* ============================================================
    ErrorBoundary — atrapa errores de render para evitar pantalla blanca
    ============================================================ */
@@ -332,6 +353,21 @@ function App() {
         setPersonalList(getPersonal().map(p => ({ nombre: p.nombre, rol: p.rol })));
         setLoadingPersonal(false);
       });
+  }, []);
+
+  // Auto-actualización: chequea cada 5 min y al volver a foreground (la
+  // aseadora cambia de app y vuelve) si hay un deploy nuevo — si lo hay,
+  // recarga sola. Sin esto una pestaña dejada abierta se queda con el JS
+  // viejo indefinidamente.
+  useEffectL(function() {
+    if (APP_VERSION === 'dev') return;
+    var intervalo = setInterval(checkForUpdate, 5 * 60 * 1000);
+    function onVisible() { if (document.visibilityState === 'visible') checkForUpdate(); }
+    document.addEventListener('visibilitychange', onVisible);
+    return function() {
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   function loadDataFor(nombre, rol) {

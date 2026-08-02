@@ -29,11 +29,21 @@ jobs:
           SHORT_SHA="${GITHUB_SHA:0:7}"
           # Reemplaza cualquier ?v=... en script src de .jsx por el SHA del commit
           sed -i "s/\\.jsx?v=[^\"]*\"/\\.jsx?v=$SHORT_SHA\"/g" _site/index.html
+          # Idem para el meta app-version que lee checkForUpdate() en app.jsx
+          sed -i "s/name=\"app-version\" content=\"[^\"]*\"/name=\"app-version\" content=\"$SHORT_SHA\"/" _site/index.html
+          # version.json: la app corriendo lo poll-ea (ver checkForUpdate en
+          # app.jsx) para detectar que hay un deploy nuevo y recargar sola.
+          # Sin esto, una pestaña dejada abierta (el caso normal de las
+          # aseadoras en el celular) nunca vuelve a pedir index.html y se
+          # queda con el JS viejo en memoria para siempre, sin importar el
+          # cache-control de GitHub Pages.
+          echo "{\"version\":\"$SHORT_SHA\"}" > _site/version.json
           # Compatibilidad: publicar también Index.html (mayúscula) para accesos
           # directos guardados con la URL vieja.
           cp _site/index.html _site/Index.html
           # Imprime el resultado para debug
           grep -o "\\.jsx?v=[^\"]*\"" _site/index.html | sort -u
+          cat _site/version.json
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
