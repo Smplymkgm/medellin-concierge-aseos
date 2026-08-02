@@ -48,12 +48,22 @@ function sincronizarCalendarios() {
     var propsConIcal = 0;
     var fetchesExitosos = 0;
     var propFetchOk = {};  // id de propiedad -> true si su iCal respondió (HTTP 200) este run
-    for (var p of propiedades) {
-      if (!p.icalUrl) continue;
-      propsConIcal++;
-      var lista = obtenerReservasDeICal(p);
+
+    // Antes: un UrlFetchApp.fetch() por propiedad, en secuencia (40
+    // propiedades = 40 esperas de red una detrás de otra). A pocos cientos
+    // de propiedades esto empieza a acercarse al límite de ejecución de
+    // Apps Script (~6 min) y el sync deja de terminar. fetchAll() manda
+    // todos los pedidos de una vez — Google los resuelve en paralelo del
+    // lado de sus servidores — así que el tiempo total casi no crece aunque
+    // el número de propiedades sí.
+    var propsConUrls = propiedades.filter(function(p) { return p.icalUrl; });
+    propsConIcal = propsConUrls.length;
+    var reservasPorProp = obtenerReservasDeTodasLasPropiedades(propsConUrls);
+
+    for (var p of propsConUrls) {
+      var lista = reservasPorProp[p.id] || [];
       if (lista.fetchOk) propFetchOk[p.id] = true;
-      if (lista && lista.length > 0) fetchesExitosos++;
+      if (lista.length > 0) fetchesExitosos++;
       for (var k = 0; k < lista.length; k++) {
         var r = lista[k];
         var kc = String(r.codigo || "");
@@ -308,6 +318,76 @@ function recuperarCanceladosFalsos() {
 // ============================================================
 // iCAL — fetch + parse
 // ============================================================
+
+// Trae los iCal de MUCHAS propiedades a la vez con UrlFetchApp.fetchAll(),
+// en vez de un fetch por propiedad en secuencia (ver obtenerReservasDeICal
+// abajo, que sigue existiendo para el caso de una sola propiedad —
+// recuperarCanceladosFalsos la usa así). Se manda en lotes de a 50 para no
+// depender de que Apps Script soporte lotes arbitrariamente grandes, y para
+// que una URL rota en un lote no arrastre a las demás.
+// Devuelve { idProp: reservas[] }, con reservas.fetchOk = true si al menos
+// un feed de esa propiedad respondió 200.
+var ICAL_FETCHALL_LOTE = 50;
+
+function obtenerReservasDeTodasLasPropiedades(propiedades) {
+  var resultado = {};
+  propiedades.forEach(function(p) {
+    resultado[p.id] = [];
+    resultado[p.id].fetchOk = false;
+  });
+
+  var pares = [];
+  propiedades.forEach(function(p) {
+    var urls = (p.icalUrls && p.icalUrls.length) ? p.icalUrls : (p.icalUrl ? [p.icalUrl] : []);
+    urls.forEach(function(u) {
+      var url = String(u || "").trim();
+      if (url) pares.push({ prop: p, url: url });
+    });
+  });
+  if (!pares.length) return resultado;
+
+  var vistosPorProp = {};  // idProp -> {codigo:true}, dedup entre feeds de la misma propiedad
+
+  for (var inicio = 0; inicio < pares.length; inicio += ICAL_FETCHALL_LOTE) {
+    var lote = pares.slice(inicio, inicio + ICAL_FETCHALL_LOTE);
+    var requests = lote.map(function(x) { return { url: x.url, muteHttpExceptions: true }; });
+    var responses;
+    try {
+      responses = UrlFetchApp.fetchAll(requests);
+    } catch(e) {
+      // Un lote entero puede fallar por una URL mal formada — se loguea y se
+      // sigue con el próximo lote en vez de perder todo el sync.
+      Logger.log("obtenerReservasDeTodasLasPropiedades: lote falló (" + lote.length + " urls): " + e.message);
+      continue;
+    }
+
+    for (var i = 0; i < lote.length; i++) {
+      var prop = lote[i].prop;
+      var url  = lote[i].url;
+      var resp = responses[i];
+      var arr  = resultado[prop.id];
+      try {
+        if (resp.getResponseCode() !== 200) {
+          Logger.log("iCal " + prop.nombre + " HTTP " + resp.getResponseCode() + ": " + url);
+          continue;
+        }
+        arr.fetchOk = true;
+        var reservas = parsearICal(resp.getContentText(), prop);
+        var vistos = vistosPorProp[prop.id] || (vistosPorProp[prop.id] = {});
+        for (var k = 0; k < reservas.length; k++) {
+          var cod = reservas[k].codigo;
+          if (vistos[cod]) continue;  // mismo código en dos feeds de la misma propiedad
+          vistos[cod] = true;
+          arr.push(reservas[k]);
+        }
+      } catch(e) {
+        Logger.log("Error procesando iCal " + prop.nombre + " (" + url + "): " + e.message);
+      }
+    }
+  }
+
+  return resultado;
+}
 
 function obtenerReservasDeICal(prop) {
   // Soporta múltiples iCal por propiedad (Airbnb + Booking + otros).
