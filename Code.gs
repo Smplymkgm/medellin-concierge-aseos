@@ -106,6 +106,7 @@ function doPost(e) {
     if (action === "actualizarPropiedad") return handleActualizarPropiedad(body);
     if (action === "eliminarPropiedad")   return handleEliminarPropiedad(body);
     if (action === "getPersonal")         return handleGetPersonal(body);
+    if (action === "agregarPersonal")     return handleAgregarPersonal(body);
     if (action === "actualizarPersonal")  return handleActualizarPersonal(body);
     if (action === "getUploadUrl")        return handleGetUploadUrl(body);
     if (action === "registrarVideo")      return handleRegistrarVideo(body);
@@ -1472,6 +1473,56 @@ function handleGetPersonal(body) {
     };
   });
   return respond(true, result);
+}
+
+// "Agregar aseadora" en la app solo actualizaba el estado local (nunca
+// llamaba al backend) — la persona quedaba visible en la UI pero jamás se
+// escribía en la hoja Personal. Resultado: al asignarle un aseo,
+// asignarAseo escribía su nombre en la columna H del master, que además
+// tenía la validación de datos con una lista fija — doble motivo del
+// "violates the data validation rule". Este endpoint persiste de verdad.
+function handleAgregarPersonal(body) {
+  var datos  = body.datos || {};
+  var nombre = String(datos.nombre || "").trim();
+  if (!nombre) return respond(false, null, "Nombre requerido");
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch(e) { return respond(false, null, "Sistema ocupado"); }
+  try {
+    var ss   = getSS();
+    var hoja = ss.getSheetByName(CONFIG.hojaPersonal);
+    if (!hoja) return respond(false, null, "Hoja Personal no encontrada");
+
+    if (hoja.getLastRow() > 1) {
+      var existentes = hoja.getRange(2, 2, hoja.getLastRow()-1, 1).getValues().flat().map(String);
+      if (existentes.some(function(n) { return n.trim().toLowerCase() === nombre.toLowerCase(); })) {
+        return respond(false, null, "Ya existe una persona con ese nombre");
+      }
+    }
+
+    var pin      = String(datos.pin || "").trim();
+    var email    = String(datos.email || "").trim();
+    var telefono = String(datos.tel || datos.telefono || "").trim();
+
+    var fi = hoja.getLastRow() + 1;
+    hoja.getRange(fi, 1, 1, 7).setValues([[true, nombre, pin, email, "", "", telefono]]);
+    hoja.getRange(fi, 3, 1, 1).setNumberFormat("@");
+    hoja.getRange(fi, 1, 1, 7)
+      .setBackground(fi % 2 === 0 ? "#f8f9fa" : "#ffffff")
+      .setFontFamily("Arial").setFontSize(10);
+
+    // El dropdown de aseadoras (columna H del master) queda desactualizado
+    // hasta el próximo sync (cada 6h) si no se refresca ahora — por eso
+    // aparecía el error de validación aun con el nombre ya en Personal.
+    try {
+      var master = ss.getSheetByName(CONFIG.hojaMaestra);
+      if (master) aplicarDropdowns(master);
+    } catch(e) { Logger.log("aplicarDropdowns tras alta de personal: " + e.message); }
+
+    return respond(true, { nombre: nombre });
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
 }
 
 function handleActualizarPersonal(body) {

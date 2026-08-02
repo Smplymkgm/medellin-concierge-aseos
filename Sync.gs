@@ -485,10 +485,22 @@ function escribirReservas(hoja, reservas, guardado, desasignados) {
   hoja.getRange(2, 9, filas.length, 1).setNumberFormat("$#,##0");
 }
 
+// La lista de aseadoras del dropdown (columna H) se arma DINÁMICAMENTE desde
+// la hoja Personal — antes estaba hardcodeada ("Ana","Fernanda","Claudia",
+// "Admin"), así que cada aseadora nueva rompía asignarAseo con "violates the
+// data validation rule" hasta que alguien tocara el código a mano. Con esto
+// agregar una aseadora en Personal alcanza; el próximo sync (máx. 6h, o
+// manual desde el menú) actualiza el dropdown solo.
 function aplicarDropdowns(hoja) {
+  var nombres = getPersonal().map(function(p) { return p.nombre; }).filter(Boolean);
+  // Nunca dejar la validación sin opciones (bloquearía TODA asignación) ni
+  // perder "Admin" si por algún motivo no está activo en Personal.
+  if (nombres.indexOf("Admin") === -1) nombres.push("Admin");
+  if (!nombres.length) nombres = ["Admin"];
+
   hoja.getRange("H2:H2000").setDataValidation(
     SpreadsheetApp.newDataValidation()
-      .requireValueInList(["Ana","Fernanda","Claudia","Admin"], true)
+      .requireValueInList(nombres, true)
       .setAllowInvalid(false).build()
   );
   hoja.getRange("G2:G2000").setDataValidation(
